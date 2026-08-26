@@ -32,6 +32,12 @@ class Runtime:
                 "limits": np.array([self.body.joint_limits[j] for j in joints]),
                 "home_ctrl": None,  # captured on first use
             }
+            hand = self.body.cfg["arms"][side].get("hand")
+            if hand is not None:
+                self.arm[side]["hand_act"] = np.array(
+                    [self.body.actuator_of[j] for j in hand["joints"]])
+                self.arm[side]["hand_open"] = np.asarray(hand["open"], dtype=float)
+                self.arm[side]["hand_closed"] = np.asarray(hand["closed"], dtype=float)
         self.on_frame = None  # callable(t) for demos; None = headless
         self._t = 0.0
         self._held: dict[str, str | None] = {s: None for s in self.arm}
@@ -92,9 +98,20 @@ class Runtime:
             self.step(self.dt)
 
     def move_arm_home(self, side: str, duration: float = 1.5) -> None:
+        """Reverse of the ready swing: retract over the table, out to the
+        side, then down — a straight joint blend to hanging would drag the
+        fist through whatever sits near the table edge."""
         a = self.arm[side]
-        if a["home_ctrl"] is not None:
-            self._interp_ctrl(side, a["home_ctrl"], duration)
+        if a["home_ctrl"] is None:
+            return
+        cfg = self.body.cfg["arms"][side]
+        via = cfg.get("ready_via")
+        if via is not None:
+            if not isinstance(via[0], (list, tuple)):
+                via = [via]
+            for pose in reversed(via):
+                self._interp_ctrl(side, pose, duration * 0.5)
+        self._interp_ctrl(side, a["home_ctrl"], duration * 0.5)
 
     def move_arm_ready(self, side: str, duration: float = 1.2) -> None:
         """Joint-space move to the config's elbow-up 'ready' pose. The home
@@ -107,9 +124,26 @@ class Runtime:
         cfg = self.body.cfg["arms"][side]
         via, ready = cfg.get("ready_via"), cfg.get("ready")
         if via is not None:
-            self._interp_ctrl(side, via, duration * 0.6)
+            if not isinstance(via[0], (list, tuple)):
+                via = [via]
+            for pose in via:  # e.g. swing back, lift high, come in over the table
+                self._interp_ctrl(side, pose, duration * 0.6)
         if ready is not None:
             self._interp_ctrl(side, ready, duration * 0.6)
+
+    def set_hand(self, side: str, pose: str, duration: float = 0.4) -> None:
+        """Curl or open the fingers ('closed'/'open'). Cosmetic on bodies
+        with hands (the weld provides the hold); no-op on bodies without."""
+        a = self.arm[side]
+        if "hand_act" not in a:
+            return
+        target = a["hand_closed"] if pose == "closed" else a["hand_open"]
+        start = self.data.ctrl[a["hand_act"]].copy()
+        n = max(1, int(duration / self.dt))
+        for i in range(n):
+            s = (i + 1) / n
+            self.data.ctrl[a["hand_act"]] = (1 - s) * start + s * target
+            self.step(self.dt)
 
     def square_up(self, duration: float = 0.6) -> None:
         """Return the gaze/waist joint to neutral: manipulation poses are

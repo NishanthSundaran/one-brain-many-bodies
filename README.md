@@ -50,7 +50,10 @@ Runs entirely on a laptop (developed on an RTX 3060 Mobile, 6 GB VRAM).
 
 ## Honest limitations
 
-- Grasping is a weld constraint in v1, not contact-rich manipulation.
+- Grasping: the G1's three-finger hands visibly close around objects, but the
+  hold itself is a weld constraint and the finger collisions are disabled —
+  finger closure is cosmetic, not contact-rich manipulation. The H1 has no
+  fingers (ball hands), so it uses the plain attach-grasp.
 - The VLM chooses *what* and *where* by marker ID; exact 3D poses come from the simulator (Set-of-Mark grounding), not monocular estimation.
 - Locomotion starts as kinematic base motion; a pretrained RL policy is a stretch goal.
 

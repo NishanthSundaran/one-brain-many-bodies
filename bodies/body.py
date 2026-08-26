@@ -93,6 +93,15 @@ class Body:
             self.spec.body(arm["ee_parent"]).add_site(
                 name=EE_SITE[side], pos=arm["ee_offset"], size=[0.012, 0.012, 0.012]
             )
+            # Fingers are cosmetic (the hold is a weld): disable their
+            # collisions so curled fingers never fight the held object.
+            hand = arm.get("hand")
+            if hand and hand.get("link_prefix"):
+                for b in self.spec.bodies:
+                    if b.name.startswith(hand["link_prefix"]):
+                        for g in b.geoms:
+                            g.contype = 0
+                            g.conaffinity = 0
         hc = cfg["head_camera"]
         self.spec.body(hc["parent"]).add_camera(
             name=HEAD_CAM,

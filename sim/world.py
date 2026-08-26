@@ -52,6 +52,7 @@ class World:
 
         self.objects: dict[str, str] = {}  # body name -> display name
         self.graspable: list[str] = []     # subset with free joints
+        self.object_half: dict[str, float] = {}  # half-height, for grasp/place
         for obj in (DEFAULT_OBJECTS if objects is None else objects):
             self._add_object(w, obj)
 
@@ -92,6 +93,7 @@ class World:
                      else mujoco.mjtGeom.mjGEOM_CYLINDER)
             b.add_geom(type=gtype, size=size, rgba=rgba, mass=0.1)
             self.graspable.append(bname)
+        self.object_half[bname] = float(size[-1])
         self.objects[bname] = obj["name"]
 
     def reset(self, settle: float = 0.5) -> None:

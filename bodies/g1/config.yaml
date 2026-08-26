@@ -1,7 +1,7 @@
 # Unitree G1 body definition. Everything robot-specific lives here;
 # bodies/body.py and everything above it must stay embodiment-agnostic.
 name: g1
-mjcf: third_party/menagerie/unitree_g1/g1.xml
+mjcf: third_party/menagerie/unitree_g1/g1_with_hands.xml
 root_body: pelvis
 keyframe: stand           # source of home pose and home ctrl
 
@@ -19,8 +19,16 @@ arms:
     ee_offset: [0.08, 0.0, 0.0]
     # elbow-up pre-manipulation pose: well-conditioned Jacobian for servoing
     ready: [-0.9, 0.25, 0.05, 1.0, 0.0, 0.0, 0.0]
-    # swing waypoint: hand curls up over the table edge, never through it
-    ready_via: [-1.2, 0.35, 0.0, 2.05, 0.0, 0.0, 0.0]
+    # human-like arm raise: out to the side (no table there), then forward
+    ready_via: [0.0, 1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
+    hand:
+      link_prefix: left_hand_
+      joints: [left_hand_thumb_0_joint, left_hand_thumb_1_joint,
+               left_hand_thumb_2_joint, left_hand_index_0_joint,
+               left_hand_index_1_joint, left_hand_middle_0_joint,
+               left_hand_middle_1_joint]
+      open: [0, 0, 0, 0, 0, 0, 0]
+      closed: [0.8, 0.6, 1.0, -1.0, -1.1, -1.0, -1.1]
   right:
     joints:
       - right_shoulder_pitch_joint
@@ -33,9 +41,20 @@ arms:
     ee_parent: right_wrist_yaw_link
     ee_offset: [0.08, 0.0, 0.0]
     ready: [-0.9, -0.25, -0.05, 1.0, 0.0, 0.0, 0.0]
-    ready_via: [-1.2, -0.35, 0.0, 2.05, 0.0, 0.0, 0.0]
+    ready_via: [0.0, -1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
+    hand:
+      link_prefix: right_hand_
+      joints: [right_hand_thumb_0_joint, right_hand_thumb_1_joint,
+               right_hand_thumb_2_joint, right_hand_index_0_joint,
+               right_hand_index_1_joint, right_hand_middle_0_joint,
+               right_hand_middle_1_joint]
+      open: [0, 0, 0, 0, 0, 0, 0]
+      closed: [-0.8, -0.6, -1.0, 1.0, 1.1, 1.0, 1.1]
 
 gaze_joint: waist_yaw_joint   # used by look_at; omit on bodies with fixed torsos
+
+scene:
+  table_x: 0.48   # a fist-width of standoff so arm swings clear the table edge
 
 head_camera:
   parent: torso_link      # G1 has no separate head body; head is part of the torso mesh

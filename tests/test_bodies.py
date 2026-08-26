@@ -18,8 +18,8 @@ def world():
 
 
 def test_compiles_fixed_base(world):
-    # 29 actuated joints; the only free joints belong to scene objects
-    assert world.model.nu == 29
+    # 29 body joints + 14 finger joints; free joints belong to scene objects
+    assert world.model.nu == 43
     robot_free = [j for j in range(world.model.njnt)
                   if world.model.joint(j).type[0] == mujoco.mjtJoint.mjJNT_FREE]
     assert len(robot_free) == 3  # red block, green block, blue cup
@@ -33,10 +33,10 @@ def test_interface_injected(world):
 
 def test_limits_and_actuators_derived(world):
     body = world.body
-    assert len(body.joint_limits) == 29
+    assert len(body.joint_limits) == 43
     for lo, hi in body.joint_limits.values():
         assert lo < hi
-    assert len(body.actuator_of) == 29
+    assert len(body.actuator_of) == 43
     for side, joints in body.arm_joints.items():
         assert len(joints) == 7
 

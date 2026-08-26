@@ -15,9 +15,9 @@ SCHEMA = {
 }
 
 APPROACH = 0.12
-TOUCH = 0.055   # above object center: hover just over the top surface,
+CLEAR = 0.03    # palm hovers this far above the object's top surface;
 LIFT = 0.15     # the weld does the holding (honest v1 limitation)
-ATTACH_DIST = 0.075
+ATTACH_TOP_DIST = 0.055
 
 
 def run(rt, world, object, arm=None):
@@ -41,10 +41,13 @@ def run(rt, world, object, arm=None):
     if not rt.servo_ee(arm, pos + [0, 0, APPROACH]):
         rt.recover(arm)
         return {"ok": False, "arm": arm, "error": "could not reach above object"}
-    rt.servo_ee(arm, world.object_pos(bname) + [0, 0, TOUCH], speed=0.08)
-    if np.linalg.norm(rt.ee_pos(arm) - world.object_pos(bname)) > ATTACH_DIST:
+    half = world.object_half.get(bname, 0.03)
+    rt.servo_ee(arm, world.object_pos(bname) + [0, 0, half + CLEAR], speed=0.08)
+    top = world.object_pos(bname) + [0, 0, half]
+    if np.linalg.norm(rt.ee_pos(arm) - top) > ATTACH_TOP_DIST:
         rt.recover(arm)
         return {"ok": False, "arm": arm, "error": "hand did not get close enough"}
     rt.attach(arm, bname)
+    rt.set_hand(arm, "closed")
     rt.servo_ee(arm, world.object_pos(bname) + [0, 0, LIFT])
     return {"ok": True, "arm": arm, "holding": object}

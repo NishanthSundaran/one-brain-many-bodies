@@ -49,6 +49,7 @@ def run(rt, world, target, arm=None):
         rt.servo_ee(arm, [drop[0], drop[1], drop[2] + HOVER], speed=0.18,
                     tol=0.05, timeout=4.0)
         rt.servo_ee(arm, drop, speed=0.1, tol=0.03, timeout=3.0)
+        rt.set_hand(arm, "open")
         rt.release(arm)
         rt.step(0.3)
         rt.recover(arm)
@@ -58,6 +59,7 @@ def run(rt, world, target, arm=None):
                          f"{held_name} was set down at {set_down}. "
                          f"Grasp it with the other arm and place it."}
     rt.servo_ee(arm, tpos + [0, 0, DROP], speed=0.08)
+    rt.set_hand(arm, "open")
     rt.release(arm)
     rt.step(0.4)  # let it settle
     rt.servo_ee(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
