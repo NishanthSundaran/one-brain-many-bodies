@@ -1,0 +1,165 @@
+WARNING Wed Aug 26 20:13:54 2026: Attach conflict when attaching 'Tetheria_Aero_Hand_Open_RightHand' to 'h1', policy is 'warning'
+timestep: parent has 0.002 (default), child has 0.01, keeping parent value
+iterations: parent has 100 (default), child has 5, keeping parent value
+ls_iterations: parent has 50 (default), child has 8, keeping parent value
+
+WARNING Wed Aug 26 20:14:06 2026: Attach conflict when attaching 'Tetheria_Aero_Hand_Open_RightHand' to 'h1', policy is 'warning'
+timestep: parent has 0.002 (default), child has 0.01, keeping parent value
+iterations: parent has 100 (default), child has 5, keeping parent value
+ls_iterations: parent has 50 (default), child has 8, keeping parent value
+
+WARNING Wed Aug 26 20:14:28 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:16:47 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:16:47 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:17:13 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:17:13 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:17:43 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:17:43 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:18:05 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:18:05 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:19:30 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:19:30 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:20:11 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:20:11 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:22:30 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:22:30 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:23:12 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:23:12 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:23:52 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:23:52 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:24:07 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:24:07 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:24:42 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:24:42 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:25:16 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:25:16 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:25:49 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:25:49 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:26:35 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:26:35 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:31:51 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Wed Aug 26 20:31:51 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+

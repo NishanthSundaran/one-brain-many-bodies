@@ -22,7 +22,11 @@ def _png(rgb: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-DEFAULT_TOOLS = ("grasp", "place", "look_at", "home")
+# Minimal tool surface: a 3B planner stays on the rails with few choices.
+# `reach` is subsumed by grasp/place, and `look_at` only invites stalls —
+# the head camera already sees the whole workspace and every marker ships
+# with its 3D position. Both remain available as skills.
+DEFAULT_TOOLS = ("grasp", "place", "home")
 
 
 class Agent:
@@ -103,44 +107,37 @@ class Agent:
                 break
             args = self._resolve_marker_refs(call.get("args", {}), markers)
 
-            # hard loop-breaker: a small model will happily repeat a failing
-            # call forever; refuse to re-execute it and say so, then bail.
-            # Identical *successful* calls (e.g. home spam) are cut off too.
+            # Hard loop-breaker: a small model will happily repeat a call
+            # forever — a failing one, or a harmless "successful" one that
+            # makes no progress (look_at spam). Count consecutive identical
+            # calls; the counter only resets when the call actually changes.
             sig = (call["tool"], json.dumps(args, sort_keys=True))
-            if sig == last_call and last_result is not None \
-                    and last_result.get("ok", False):
+            if sig == last_call:
                 repeats += 1
-                if repeats >= 3:
-                    entry["result"] = {"ok": False,
-                                       "summary": "aborted: brain repeated "
-                                                  "the same action without "
-                                                  "progress"}
-                    self.transcript.append(entry)
-                    if on_step:
-                        on_step(entry)
-                    break
-            if sig == last_call and last_result is not None \
-                    and not last_result.get("ok", False):
-                repeats += 1
-                if repeats >= 2:
-                    entry["result"] = {"ok": False,
-                                       "summary": "aborted: brain kept "
-                                                  "repeating a failing action"}
-                    self.transcript.append(entry)
-                    if on_step:
-                        on_step(entry)
-                    break
+            else:
+                last_call, repeats = sig, 0
+
+            failed_before = (last_result is not None
+                             and not last_result.get("ok", False))
+            if repeats >= 2:
+                entry["result"] = {"ok": False,
+                                   "summary": "aborted: brain repeated the "
+                                              "same action without progress"}
+                self.transcript.append(entry)
+                if on_step:
+                    on_step(entry)
+                break
+            if repeats and failed_before:
                 entry["result"] = {"ok": False, "error":
                                    "REFUSED: identical action already failed. "
                                    "You MUST change the arm or the tool, or "
                                    "call done."}
                 last_result = {"tool": call["tool"], **entry["result"]}
+                history.append(f"{call['tool']}(...) -> REFUSED (repeat)")
                 self.transcript.append(entry)
                 if on_step:
                     on_step(entry)
                 continue
-            last_call = sig
-            repeats = 0
 
             if on_step:
                 on_step(entry)

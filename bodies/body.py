@@ -88,17 +88,34 @@ class Body:
         self.home_qpos = key_qpos[7:]
         self.home_ctrl = key_ctrl
 
+        # Body composition: bolt a dexterous hand from another menagerie
+        # model onto the wrist (e.g. Sharpa Wave five-finger hands on the
+        # H1, which ships with bare ball wrists).
+        for side, arm in cfg["arms"].items():
+            att = arm.get("hand_attach")
+            if att is None:
+                continue
+            child = mujoco.MjSpec.from_file(str(REPO / att["mjcf"]))
+            for k in list(child.keys):
+                child.delete(k)
+            mount = self.spec.body(arm["ee_parent"]).add_site(
+                name=f"hand_mount_{side}", pos=att["pos"], quat=att["quat"])
+            self.spec.attach(child, prefix=att["prefix"], site=mount)
+
         # Same interface on every humanoid: EE sites + head camera.
         for side, arm in cfg["arms"].items():
             self.spec.body(arm["ee_parent"]).add_site(
                 name=EE_SITE[side], pos=arm["ee_offset"], size=[0.012, 0.012, 0.012]
             )
-            # Fingers are cosmetic (the hold is a weld): disable their
-            # collisions so curled fingers never fight the held object.
+            # Finger closure is cosmetic (the hold is a weld), so curled
+            # fingers get no collisions and never fight the held object.
+            # The palm keeps its collisions: without them the hand sinks
+            # through bin walls and tabletops like a ghost.
             hand = arm.get("hand")
             if hand and hand.get("link_prefix"):
+                palm = hand.get("palm_link")
                 for b in self.spec.bodies:
-                    if b.name.startswith(hand["link_prefix"]):
+                    if b.name.startswith(hand["link_prefix"]) and b.name != palm:
                         for g in b.geoms:
                             g.contype = 0
                             g.conaffinity = 0
@@ -118,8 +135,11 @@ class Body:
                             if model.joint(i).type[0] != mujoco.mjtJoint.mjJNT_FREE]
         self.joint_limits = {n: tuple(model.joint(n).range) for n in self.joint_names}
         # joint name -> actuator id, via the actuator transmission target
+        # (joint transmissions only; tendon actuators have no joint)
         self.actuator_of = {}
         for a in range(model.nu):
+            if model.actuator_trntype[a] != mujoco.mjtTrn.mjTRN_JOINT:
+                continue
             jid = model.actuator_trnid[a, 0]
             self.actuator_of[model.joint(jid).name] = a
         self.arm_joints = {s: list(cfg["joints"]) for s, cfg in self.cfg["arms"].items()}

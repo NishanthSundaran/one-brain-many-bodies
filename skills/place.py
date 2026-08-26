@@ -17,6 +17,7 @@ SCHEMA = {
 
 HOVER = 0.10
 DROP = 0.07
+DROP_CONTAINER = 0.13   # release above a container's rim, not inside it
 RETRACT = 0.15
 
 
@@ -45,11 +46,13 @@ def _avoid_objects(rt, world, tpos, held):
 def run(rt, world, target, arm=None):
     from skills.registry import resolve_object
     note = None
+    drop = DROP
     if isinstance(target, str):
         bname = resolve_object(world, target)
         if bname is None:
             return {"ok": False, "error": f"no object named '{target}'"}
         tpos = world.object_pos(bname)
+        drop = DROP_CONTAINER
     else:
         tpos = np.asarray(target, dtype=float)
         held_body = next((rt.held(s) for s in rt.arm if rt.held(s)), None)
@@ -63,11 +66,11 @@ def run(rt, world, target, arm=None):
     if not rt.arm_can_reach_y(arm, tpos[1]):
         # same graceful degradation as an out-of-reach servo, but decided
         # up front: set the object down mid-table without any flailing
-        drop = [world.table_x - 0.08, 0.0, world.table_top + DROP]
+        down_spot = [world.table_x - 0.08, 0.0, world.table_top + DROP]
         rt.square_up()
-        rt.servo_ee(arm, [drop[0], drop[1], drop[2] + HOVER], speed=0.18,
-                    tol=0.05, timeout=4.0)
-        rt.servo_ee(arm, drop, speed=0.1, tol=0.03, timeout=3.0)
+        rt.servo_ee(arm, [down_spot[0], down_spot[1], down_spot[2] + HOVER],
+                    speed=0.18, tol=0.05, timeout=4.0)
+        rt.servo_ee(arm, down_spot, speed=0.1, tol=0.03, timeout=3.0)
         rt.set_hand(arm, "open")
         held = rt.held(arm)
         rt.release(arm)
@@ -80,18 +83,19 @@ def run(rt, world, target, arm=None):
                          f"Grasp it with the other arm and place it."}
 
     rt.square_up()
+    hover_h = drop + 0.05
     # safe-height waypoint: travel above tabletop clutter, then descend
-    rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + HOVER + 0.08],
+    rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
                 speed=0.18, tol=0.05, timeout=4.0)
-    if not rt.servo_ee(arm, tpos + [0, 0, HOVER]):
+    if not rt.servo_ee(arm, tpos + [0, 0, hover_h]):
         # graceful degradation: don't strand the object in a stuck hand.
         # Set it down at a neutral mid-table spot both arms can reach and
         # tell the brain the single next step that finishes the job.
         held = rt.held(arm)
-        drop = [world.table_x - 0.08, 0.0, world.table_top + DROP]
-        rt.servo_ee(arm, [drop[0], drop[1], drop[2] + HOVER], speed=0.18,
-                    tol=0.05, timeout=4.0)
-        rt.servo_ee(arm, drop, speed=0.1, tol=0.03, timeout=3.0)
+        down_spot = [world.table_x - 0.08, 0.0, world.table_top + DROP]
+        rt.servo_ee(arm, [down_spot[0], down_spot[1], down_spot[2] + HOVER],
+                    speed=0.18, tol=0.05, timeout=4.0)
+        rt.servo_ee(arm, down_spot, speed=0.1, tol=0.03, timeout=3.0)
         rt.set_hand(arm, "open")
         rt.release(arm)
         rt.step(0.3)
@@ -101,7 +105,7 @@ def run(rt, world, target, arm=None):
                 "error": f"target out of reach for the {arm} arm; "
                          f"{held_name} was set down at {set_down}. "
                          f"Grasp it with the other arm and place it."}
-    rt.servo_ee(arm, tpos + [0, 0, DROP], speed=0.08)
+    rt.servo_ee(arm, tpos + [0, 0, drop], speed=0.08)
     rt.set_hand(arm, "open")
     rt.release(arm)
     rt.step(0.4)  # let it settle

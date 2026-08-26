@@ -74,6 +74,17 @@ def test_agent_breaks_repetition_loop(stack):
     assert "aborted" in transcript[-1]["result"]["summary"]
 
 
+def test_agent_breaks_no_progress_loop(stack):
+    """Repeating a call that *succeeds* but changes nothing (home spam)
+    must also terminate — the counter resets only when the call changes."""
+    rt, world, rig = stack
+    spam = {"thought": "", "tool": "home", "args": {"arm": "both"}}
+    vlm = ScriptedVLM([spam] * 8)
+    transcript = Agent(rt, world, rig, vlm=vlm).run("spin forever")
+    assert len(transcript) <= 3
+    assert "aborted" in transcript[-1]["result"]["summary"]
+
+
 def test_marker_reference_resolution(stack):
     rt, world, rig = stack
     vlm = ScriptedVLM([

@@ -39,7 +39,7 @@ class Runtime:
             hand = self.body.cfg["arms"][side].get("hand")
             if hand is not None:
                 self.arm[side]["hand_act"] = np.array(
-                    [self.body.actuator_of[j] for j in hand["joints"]])
+                    [self.model.actuator(n).id for n in hand["actuators"]])
                 self.arm[side]["hand_open"] = np.asarray(hand["open"], dtype=float)
                 self.arm[side]["hand_closed"] = np.asarray(hand["closed"], dtype=float)
         self.on_frame = None  # callable(t) for demos; None = headless

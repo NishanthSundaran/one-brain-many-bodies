@@ -13,8 +13,8 @@ home:
   joints: [0, 0, -0.4, 0.8, -0.4,
            0, 0, -0.4, 0.8, -0.4,
            0,
-           0, 0, 0, 0,
-           0, 0, 0, 0]
+           0.8, 0.1, 0, 0.1,       # left arm relaxed at the side
+           0.8, -0.1, 0, 0.1]      # right arm relaxed at the side
 
 actuation:      # replace the torque motors with position servos
   kp: 300
@@ -24,17 +24,47 @@ arms:
   left:
     joints: [left_shoulder_pitch, left_shoulder_roll, left_shoulder_yaw, left_elbow]
     ee_parent: left_elbow_link
-    ee_offset: [0.28, 0.0, -0.015]   # the hand ball at the forearm tip
+    ee_offset: [0.38, 0.0, -0.03]    # palm center of the attached hand
     ready: [-0.6, 0.2, 0.2, 0.6]
-    ready_via: [-0.5, 0.3, 0.0, 1.4]
+    ready_via: [0.0, 1.2, 0.0, 1.2]   # side raise: clears the tall table
     reach_min_y: -0.15    # long arms: comfortable midline crossing
+    hand_attach:                     # Sharpa Wave five-finger hand
+      mjcf: third_party/menagerie/sharpa_wave/left_hand.xml
+      prefix: lh_
+      pos: [0.28, 0.0, -0.015]
+      quat: [0.7071, 0.0, 0.7071, 0.0]
+    hand:
+      link_prefix: lh_
+      palm_link: lh_left_hand_C_MC
+      actuators: [lh_left_thumb_CMC_FE, lh_left_thumb_CMC_AA, lh_left_thumb_MCP_FE, lh_left_thumb_MCP_AA, lh_left_thumb_IP,
+                 lh_left_index_MCP_FE, lh_left_index_MCP_AA, lh_left_index_PIP, lh_left_index_DIP,
+                 lh_left_middle_MCP_FE, lh_left_middle_MCP_AA, lh_left_middle_PIP, lh_left_middle_DIP,
+                 lh_left_ring_MCP_FE, lh_left_ring_MCP_AA, lh_left_ring_PIP, lh_left_ring_DIP,
+                 lh_left_pinky_CMC, lh_left_pinky_MCP_FE, lh_left_pinky_MCP_AA, lh_left_pinky_PIP, lh_left_pinky_DIP]
+      open: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      closed: [1.0, 0.3, 0.6, 0.0, 0.6, 0.9, 0.0, 0.9, 0.5, 0.9, 0.0, 0.9, 0.5, 0.9, 0.0, 0.9, 0.5, 0.15, 0.9, 0.0, 0.9, 0.5]
   right:
     joints: [right_shoulder_pitch, right_shoulder_roll, right_shoulder_yaw, right_elbow]
     ee_parent: right_elbow_link
-    ee_offset: [0.28, 0.0, -0.015]
+    ee_offset: [0.38, 0.0, -0.03]
     ready: [-0.6, -0.2, -0.2, 0.6]
-    ready_via: [-0.5, -0.3, 0.0, 1.4]
+    ready_via: [0.0, -1.2, 0.0, 1.2]
     reach_max_y: 0.15
+    hand_attach:
+      mjcf: third_party/menagerie/sharpa_wave/right_hand.xml
+      prefix: rh_
+      pos: [0.28, 0.0, -0.015]
+      quat: [0.7071, 0.0, 0.7071, 0.0]
+    hand:
+      link_prefix: rh_
+      palm_link: rh_right_hand_C_MC
+      actuators: [rh_right_thumb_CMC_FE, rh_right_thumb_CMC_AA, rh_right_thumb_MCP_FE, rh_right_thumb_MCP_AA, rh_right_thumb_IP,
+                 rh_right_index_MCP_FE, rh_right_index_MCP_AA, rh_right_index_PIP, rh_right_index_DIP,
+                 rh_right_middle_MCP_FE, rh_right_middle_MCP_AA, rh_right_middle_PIP, rh_right_middle_DIP,
+                 rh_right_ring_MCP_FE, rh_right_ring_MCP_AA, rh_right_ring_PIP, rh_right_ring_DIP,
+                 rh_right_pinky_CMC, rh_right_pinky_MCP_FE, rh_right_pinky_MCP_AA, rh_right_pinky_PIP, rh_right_pinky_DIP]
+      open: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      closed: [1.0, 0.3, 0.6, 0.0, 0.6, 0.9, 0.0, 0.9, 0.5, 0.9, 0.0, 0.9, 0.5, 0.9, 0.0, 0.9, 0.5, 0.15, 0.9, 0.0, 0.9, 0.5]
 
 gaze_joint: torso
 

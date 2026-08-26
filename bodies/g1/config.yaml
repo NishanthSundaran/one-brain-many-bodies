@@ -29,7 +29,7 @@ arms:
       - [0.0, 1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
     hand:
       link_prefix: left_hand_
-      joints: [left_hand_thumb_0_joint, left_hand_thumb_1_joint,
+      actuators: [left_hand_thumb_0_joint, left_hand_thumb_1_joint,
                left_hand_thumb_2_joint, left_hand_index_0_joint,
                left_hand_index_1_joint, left_hand_middle_0_joint,
                left_hand_middle_1_joint]
@@ -54,7 +54,7 @@ arms:
       - [0.0, -1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
     hand:
       link_prefix: right_hand_
-      joints: [right_hand_thumb_0_joint, right_hand_thumb_1_joint,
+      actuators: [right_hand_thumb_0_joint, right_hand_thumb_1_joint,
                right_hand_thumb_2_joint, right_hand_index_0_joint,
                right_hand_index_1_joint, right_hand_middle_0_joint,
                right_hand_middle_1_joint]
