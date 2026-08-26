@@ -61,8 +61,10 @@ class Runtime:
         self.root_id = self.model.body(self.body.cfg["root_body"]).id
         self.loco = None
         self.walk_speed = 0.5
+        self.use_plant = False
         self.station = None   # (xy, yaw) the standing controller holds
         self._station_i = np.zeros(2)   # integral state of the station PI
+        self._station_bias = np.zeros(2)  # measured hold offset (base frame)
         self._station_speed = STATION_SPEED
         self._planted = False           # stance mode (see plant/unplant)
         self._nominal_gain = self.model.actuator_gainprm[:, 0].copy()
@@ -77,9 +79,20 @@ class Runtime:
             self.loco.controlled = (
                 None if cfg.get("policy_owns") == "all" else "leg_waist")
             self.walk_speed = float(cfg.get("walk_speed", 0.5))
+            self.use_plant = bool(cfg.get("plant_to_manipulate", False))
             # hold the start pose: facing +x at the primary table's station
-            self.station = (np.array(self.model.body_pos[self.root_id][:2]), 0.0)
-            self.step(3.0)   # PI station keeping converges in ~3 s
+            self.home_station = np.array(self.model.body_pos[self.root_id][:2])
+            self.station = (self.home_station.copy(), 0.0)
+            self.step(3.0)
+            # The policy cannot walk backwards against its own creep, so the
+            # hold settles a repeatable distance *ahead* of its setpoint.
+            # Measure that bias once and aim behind the target by it.
+            d_world = self.base_xy - self.home_station
+            cy, sy = np.cos(-self.base_yaw), np.sin(-self.base_yaw)
+            self._station_bias = np.array([cy * d_world[0] - sy * d_world[1],
+                                           sy * d_world[0] + cy * d_world[1]])
+            self.station = (self.home_station.copy(), 0.0)
+            self.step(2.0)
         self._fixed_base_xy = np.array(self.model.body_pos[self.root_id][:2])
 
     # ---------------- core stepping ----------------
@@ -162,7 +175,12 @@ class Runtime:
         if self.station is None:
             return
         xy, yaw = self.station
-        err = np.asarray(xy) - self.base_xy
+        # aim behind the setpoint by the measured hold bias
+        c, s_ = np.cos(yaw), np.sin(yaw)
+        b = self._station_bias
+        xy = np.asarray(xy) - np.array([c * b[0] - s_ * b[1],
+                                        s_ * b[0] + c * b[1]])
+        err = xy - self.base_xy
         c, s = np.cos(-self.base_yaw), np.sin(-self.base_yaw)
         e = np.array([c * err[0] - s * err[1], s * err[0] + c * err[1]])
         yaw_err = self._wrap(yaw - self.base_yaw)
@@ -233,7 +251,11 @@ class Runtime:
         how the walking controller hands over to the manipulation
         controller: the locomotion policy cannot rebalance while the arm
         controller owns the arms, so it is not left fighting for them."""
-        if self.loco is None or self._planted:
+        # Planting (freezing the legs to work) was the intuitive design and
+        # is the wrong one: a frozen robot has no way to absorb the momentum
+        # of its own arm and topples. Left walking, the policy simply takes a
+        # step and recovers. So this is opt-in and off by default.
+        if self.loco is None or self._planted or not self.use_plant:
             return
         names = self.loco.policy_joint_names()
         acts = [self.model.actuator(n).id for n in names]
@@ -465,7 +487,7 @@ class Runtime:
                 self._interp_ctrl(side, pose, duration * 0.5)
         self._interp_ctrl(side, a["home_ctrl"], duration * 0.5)
 
-    def move_arm_ready(self, side: str, duration: float = 1.2) -> None:
+    def move_arm_ready(self, side: str, duration: float = None) -> None:
         """Joint-space move to the config's elbow-up 'ready' pose. The home
         pose (arm hanging) is near-singular; Cartesian servoing starts here.
         An optional 'ready_via' waypoint routes the swing over the table edge
@@ -473,6 +495,10 @@ class Runtime:
         a = self.arm[side]
         if a["home_ctrl"] is None:
             a["home_ctrl"] = self.data.ctrl[a["act"]].copy()
+        # A balancing robot needs the arm moved gently: fast swings are a
+        # momentum disturbance it has to catch with a step.
+        if duration is None:
+            duration = 3.0 if self.loco is not None else 1.2
         cfg = self.body.cfg["arms"][side]
         via, ready = cfg.get("ready_via"), cfg.get("ready")
         if via is not None:

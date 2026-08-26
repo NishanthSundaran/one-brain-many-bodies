@@ -87,9 +87,10 @@ def run(rt, world, target, arm=None):
     rt.plant()
     hover_h = drop + 0.05
     # safe-height waypoint: travel above tabletop clutter, then descend
+    patience = 16.0 if rt.loco is not None else 4.0
     rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
-                speed=0.18, tol=0.05, timeout=4.0)
-    if not rt.servo_ee(arm, tpos + [0, 0, hover_h]):
+                speed=0.18, tol=0.05, timeout=patience)
+    if not rt.servo_ee(arm, tpos + [0, 0, hover_h], timeout=patience):
         # graceful degradation: don't strand the object in a stuck hand.
         # Set it down at a neutral mid-table spot both arms can reach and
         # tell the brain the single next step that finishes the job.

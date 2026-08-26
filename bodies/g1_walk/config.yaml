@@ -111,17 +111,18 @@ locomotion:
   arm_amp: 0.25
 
 scene:
-  # Sized to the G1's measured reach: standing at the origin its hand covers
-  # ~0.35 m forward at pelvis height, and the pelvis needs ~0.25 m of
-  # clearance from the table edge because a walking robot sways.
-  table_top: 0.75
-  table_x: 0.48
+  # Sized so the robot can work while it balances: a 0.90 m top is above the
+  # pelvis, so the torso clears the edge, and the measured reach at that
+  # height (0.42 m) covers objects sitting near the near edge while the
+  # pelvis keeps the 0.30 m clearance a swaying robot needs.
+  table_top: 0.90
+  table_x: 0.52
   table_half: [0.22, 0.4]
   objects:
-    red block: [0.30, 0.15]
-    green block: [0.29, -0.10]
-    blue cup: [0.33, 0.09]
-    bin: [0.32, -0.21]
+    red block: [0.38, 0.15]
+    green block: [0.37, -0.13]
+    blue cup: [0.44, 0.08]
+    bin: [0.40, -0.24]
 
 head_camera:
   parent: torso_link      # G1 has no separate head body; head is part of the torso mesh
