@@ -27,7 +27,7 @@
 | 1 | Head-camera view with Set-of-Mark object markers | ✅ `demos/02_som_view.py` |
 | 2 | Compliant arm: drag the hand, tanh-damped admittance response | ✅ `demos/03_compliant_arm.py` |
 | 3 | Scripted pick-and-place skills | ✅ `demos/04_pick_place.py` |
-| 4 | Local VLM brain executes a typed command | ⬜ |
+| 4 | Local VLM brain executes a typed command | ✅ `demos/05_vlm_brain.py` |
 | 5 | **Same brain, two bodies: G1 and H1 side by side** | ⬜ |
 | 6 | Walk-and-fetch | ⬜ |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |

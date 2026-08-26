@@ -111,6 +111,29 @@ class Runtime:
         if ready is not None:
             self._interp_ctrl(side, ready, duration * 0.6)
 
+    def square_up(self, duration: float = 0.6) -> None:
+        """Return the gaze/waist joint to neutral: manipulation poses are
+        tuned for an unrotated torso."""
+        gaze = self.body.cfg.get("gaze_joint")
+        if gaze is None:
+            return
+        act = self.body.actuator_of[gaze]
+        start = float(self.data.ctrl[act])
+        if abs(start) < 0.02:
+            return
+        n = max(1, int(duration / self.dt))
+        for i in range(n):
+            self.data.ctrl[act] = start * (1 - (i + 1) / n)
+            self.step(self.dt)
+
+    def recover(self, side: str) -> None:
+        """After a failed reach: lift straight up out of clutter, then
+        re-stage at the ready pose so the next attempt starts clean."""
+        ee = self.ee_pos(side)
+        self.servo_ee(side, [ee[0], ee[1], 0.95], speed=0.15, tol=0.04,
+                      timeout=2.0)
+        self.move_arm_ready(side)
+
     # ---------------- weld grasping ----------------
 
     def _weld_id(self, side: str, obj_body: str) -> int:

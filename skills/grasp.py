@@ -33,14 +33,17 @@ def run(rt, world, object, arm=None):
         return {"ok": False, "error": f"{arm} hand is already holding "
                                       f"{world.objects[rt.held(arm)]}"}
 
+    rt.square_up()
     rt.move_arm_ready(arm)
     # safe-height waypoint: travel above tabletop clutter, then descend
     rt.servo_ee(arm, [pos[0], pos[1], pos[2] + APPROACH + 0.06],
                 speed=0.18, tol=0.05, timeout=4.0)
     if not rt.servo_ee(arm, pos + [0, 0, APPROACH]):
+        rt.recover(arm)
         return {"ok": False, "arm": arm, "error": "could not reach above object"}
     rt.servo_ee(arm, world.object_pos(bname) + [0, 0, TOUCH], speed=0.08)
     if np.linalg.norm(rt.ee_pos(arm) - world.object_pos(bname)) > ATTACH_DIST:
+        rt.recover(arm)
         return {"ok": False, "arm": arm, "error": "hand did not get close enough"}
     rt.attach(arm, bname)
     rt.servo_ee(arm, world.object_pos(bname) + [0, 0, LIFT])

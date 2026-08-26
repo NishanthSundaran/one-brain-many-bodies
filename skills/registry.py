@@ -26,7 +26,7 @@ def execute(name: str, rt, world, **args) -> dict:
         return {"ok": False, "error": f"unknown skill '{name}'"}
     try:
         return SKILLS[name][1](rt, world, **args)
-    except TypeError as e:
+    except Exception as e:  # malformed brain output must never crash the body
         return {"ok": False, "error": f"bad arguments: {e}"}
 
 

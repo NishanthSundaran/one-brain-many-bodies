@@ -36,6 +36,7 @@ def run(rt, world, target, arm=None):
         return {"ok": False, "error": "not holding anything"}
     held_name = world.objects[rt.held(arm)]
 
+    rt.square_up()
     # safe-height waypoint: travel above tabletop clutter, then descend
     rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + HOVER + 0.08],
                 speed=0.18, tol=0.05, timeout=4.0)
