@@ -17,6 +17,10 @@ arms:
       - left_wrist_yaw_joint
     ee_parent: left_wrist_yaw_link
     ee_offset: [0.08, 0.0, 0.0]
+    # elbow-up pre-manipulation pose: well-conditioned Jacobian for servoing
+    ready: [-0.9, 0.25, 0.05, 1.0, 0.0, 0.0, 0.0]
+    # swing waypoint: hand curls up over the table edge, never through it
+    ready_via: [-1.2, 0.35, 0.0, 2.05, 0.0, 0.0, 0.0]
   right:
     joints:
       - right_shoulder_pitch_joint
@@ -28,6 +32,10 @@ arms:
       - right_wrist_yaw_joint
     ee_parent: right_wrist_yaw_link
     ee_offset: [0.08, 0.0, 0.0]
+    ready: [-0.9, -0.25, -0.05, 1.0, 0.0, 0.0, 0.0]
+    ready_via: [-1.2, -0.35, 0.0, 2.05, 0.0, 0.0, 0.0]
+
+gaze_joint: waist_yaw_joint   # used by look_at; omit on bodies with fixed torsos
 
 head_camera:
   parent: torso_link      # G1 has no separate head body; head is part of the torso mesh

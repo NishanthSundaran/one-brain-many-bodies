@@ -13,13 +13,13 @@ TABLE_X = 0.42  # table center, robot faces +X
 
 DEFAULT_OBJECTS = [
     {"name": "red block", "kind": "box", "size": [0.025, 0.025, 0.025],
-     "rgba": [0.85, 0.15, 0.15, 1], "pos": [0.38, 0.14]},
+     "rgba": [0.85, 0.15, 0.15, 1], "pos": [0.34, 0.16]},
     {"name": "green block", "kind": "box", "size": [0.025, 0.025, 0.025],
-     "rgba": [0.15, 0.65, 0.2, 1], "pos": [0.33, -0.08]},
+     "rgba": [0.15, 0.65, 0.2, 1], "pos": [0.30, -0.10]},
     {"name": "blue cup", "kind": "cylinder", "size": [0.03, 0.05],
-     "rgba": [0.15, 0.35, 0.85, 1], "pos": [0.47, 0.03]},
+     "rgba": [0.15, 0.35, 0.85, 1], "pos": [0.40, 0.10]},
     {"name": "bin", "kind": "bin", "size": [0.07, 0.07, 0.035],
-     "rgba": [0.45, 0.45, 0.5, 1], "pos": [0.44, -0.24]},
+     "rgba": [0.45, 0.45, 0.5, 1], "pos": [0.38, -0.22]},
 ]
 
 
@@ -47,8 +47,20 @@ class World:
                        rgba=[0.4, 0.3, 0.2, 1])
 
         self.objects: dict[str, str] = {}  # body name -> display name
+        self.graspable: list[str] = []     # subset with free joints
         for obj in (DEFAULT_OBJECTS if objects is None else objects):
             self._add_object(w, obj)
+
+        # Pre-compiled (inactive) hand<->object welds: MuJoCo equalities must
+        # exist at compile time; grasp/release toggles them at runtime.
+        for side, arm in body.cfg["arms"].items():
+            for bname in self.graspable:
+                spec.add_equality(
+                    name=f"grasp_{side}_{bname}",
+                    type=mujoco.mjtEq.mjEQ_WELD,
+                    objtype=mujoco.mjtObj.mjOBJ_BODY,
+                    name1=arm["ee_parent"], name2=bname,
+                    active=False)
 
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
@@ -75,6 +87,7 @@ class World:
             gtype = (mujoco.mjtGeom.mjGEOM_BOX if kind == "box"
                      else mujoco.mjtGeom.mjGEOM_CYLINDER)
             b.add_geom(type=gtype, size=size, rgba=rgba, mass=0.1)
+            self.graspable.append(bname)
         self.objects[bname] = obj["name"]
 
     def reset(self, settle: float = 0.5) -> None:
