@@ -1,0 +1,36 @@
+# Unitree G1 body definition. Everything robot-specific lives here;
+# bodies/body.py and everything above it must stay embodiment-agnostic.
+name: g1
+mjcf: third_party/menagerie/unitree_g1/g1.xml
+root_body: pelvis
+keyframe: stand           # source of home pose and home ctrl
+
+arms:
+  left:
+    joints:
+      - left_shoulder_pitch_joint
+      - left_shoulder_roll_joint
+      - left_shoulder_yaw_joint
+      - left_elbow_joint
+      - left_wrist_roll_joint
+      - left_wrist_pitch_joint
+      - left_wrist_yaw_joint
+    ee_parent: left_wrist_yaw_link
+    ee_offset: [0.08, 0.0, 0.0]
+  right:
+    joints:
+      - right_shoulder_pitch_joint
+      - right_shoulder_roll_joint
+      - right_shoulder_yaw_joint
+      - right_elbow_joint
+      - right_wrist_roll_joint
+      - right_wrist_pitch_joint
+      - right_wrist_yaw_joint
+    ee_parent: right_wrist_yaw_link
+    ee_offset: [0.08, 0.0, 0.0]
+
+head_camera:
+  parent: torso_link      # G1 has no separate head body; head is part of the torso mesh
+  pos: [0.07, 0.0, 0.42]  # eye level, ~1.25 m world height at stand
+  pitch_down_deg: 40.0    # look at the tabletop workspace
+  fovy: 75.0

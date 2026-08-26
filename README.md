@@ -24,7 +24,7 @@
 | # | Demo | Status |
 |---|------|--------|
 | 0 | G1 standing in MuJoCo | ✅ `demos/01_stand.py` |
-| 1 | Head-camera view with Set-of-Mark object markers | ⬜ |
+| 1 | Head-camera view with Set-of-Mark object markers | ✅ `demos/02_som_view.py` |
 | 2 | Compliant arm: drag the hand, tanh-damped admittance response | ⬜ |
 | 3 | Scripted pick-and-place skills | ⬜ |
 | 4 | Local VLM brain executes a typed command | ⬜ |
@@ -42,6 +42,8 @@ git clone --filter=blob:none --sparse https://github.com/google-deepmind/mujoco_
 git -C third_party/menagerie sparse-checkout set unitree_g1 unitree_h1 robotis_op3
 # first demo:
 python demos/01_stand.py
+# tests (clear PYTHONPATH if a ROS environment is sourced in your shell):
+env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest
 ```
 
 Runs entirely on a laptop (developed on an RTX 3060 Mobile, 6 GB VRAM).
