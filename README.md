@@ -50,10 +50,14 @@ Runs entirely on a laptop (developed on an RTX 3060 Mobile, 6 GB VRAM).
 
 ## Honest limitations
 
-- Grasping: the G1's three-finger hands visibly close around objects, but the
-  hold itself is a weld constraint and the finger collisions are disabled —
-  finger closure is cosmetic, not contact-rich manipulation. The H1 has no
-  fingers (ball hands), so it uses the plain attach-grasp.
+- Grasping: both robots' fingers visibly close around objects, but the hold
+  itself is a weld constraint and the *finger* collisions are disabled, so
+  finger closure is cosmetic rather than contact-rich manipulation. Palms
+  keep their collision geometry, so hands cannot pass through bins or tables.
+- The H1 ships with bare ball wrists; this repo bolts Sharpa Wave five-finger
+  hands (22 DoF each) onto it at load time via `hand_attach` in its body
+  config — a demonstration of the body layer composing hardware, not a
+  configuration Unitree ships.
 - The VLM chooses *what* and *where* by marker ID; exact 3D poses come from the simulator (Set-of-Mark grounding), not monocular estimation.
 - Locomotion starts as kinematic base motion; a pretrained RL policy is a stretch goal.
 
