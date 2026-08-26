@@ -11,6 +11,10 @@ from scipy.spatial.transform import Rotation
 
 import mujoco
 
+ACCEL_MAX = 0.8      # m/s^2 command-velocity ramp: no robotic jump-starts
+ROT_GAIN = 2.5       # 1/s toward the canonical palm orientation
+ROT_MAX = 1.2        # rad/s
+
 from bodies.body import EE_SITE
 from controllers.diff_ik import DiffIK
 from controllers.admittance import joint_limit_scale
@@ -57,15 +61,40 @@ class Runtime:
     def nearest_arm(self, pos) -> str:
         return "left" if pos[1] > 0 else "right"
 
+    def arm_can_reach_y(self, side: str, y: float) -> bool:
+        """Cheap workspace gate from config: refuse cross-body targets
+        before moving instead of flailing through the scene."""
+        cfg = self.body.cfg["arms"][side]
+        if side == "left" and "reach_min_y" in cfg:
+            return y >= cfg["reach_min_y"]
+        if side == "right" and "reach_max_y" in cfg:
+            return y <= cfg["reach_max_y"]
+        return True
+
     # ---------------- arm servoing ----------------
+
+    def _orientation_twist(self, side: str) -> np.ndarray:
+        """Angular velocity steering the palm back to the arm's canonical
+        manipulation orientation (config `ee_quat`, world frame). Bodies
+        without the config key (e.g. 4-DoF H1 arms) get no orientation task."""
+        quat = self.body.cfg["arms"][side].get("ee_quat")
+        if quat is None:
+            return np.zeros(3)
+        R_cur = self.data.site_xmat[self.ik[side].site_id].reshape(3, 3)
+        R_des = Rotation.from_quat(np.roll(quat, -1)).as_matrix()
+        w = ROT_GAIN * Rotation.from_matrix(R_des @ R_cur.T).as_rotvec()
+        n = np.linalg.norm(w)
+        return w * (ROT_MAX / n) if n > ROT_MAX else w
 
     def servo_ee(self, side: str, target, speed: float = 0.12,
                  tol: float = 0.02, timeout: float = 5.0) -> bool:
-        """P-servo the arm's EE site to a world position via weighted DLS."""
+        """6D servo: P-control to a world position while holding the palm's
+        canonical orientation, with an accel-limited velocity ramp."""
         target = np.asarray(target, dtype=float)
         a = self.arm[side]
         if a["home_ctrl"] is None:
             a["home_ctrl"] = self.data.ctrl[a["act"]].copy()
+        v_cmd = np.zeros(3)
         t_end = self._t + timeout
         while self._t < t_end:
             err = target - self.ee_pos(side)
@@ -75,7 +104,12 @@ class Runtime:
             n = np.linalg.norm(v)
             if n > speed:
                 v *= speed / n
-            qdot = self.ik[side].solve(self.data, np.r_[v, np.zeros(3)])
+            dv = v - v_cmd
+            dn = np.linalg.norm(dv)
+            step_max = ACCEL_MAX * self.dt
+            v_cmd = v_cmd + (dv if dn <= step_max else dv * step_max / dn)
+            qdot = self.ik[side].solve(
+                self.data, np.r_[v_cmd, self._orientation_twist(side)])
             qdot *= joint_limit_scale(self.data.qpos[a["qpos"]], a["limits"])
             q = self.data.qpos[a["qpos"]]
             # anti-windup: the position target may never drift far from the

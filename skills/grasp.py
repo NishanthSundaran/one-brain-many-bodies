@@ -32,6 +32,10 @@ def run(rt, world, object, arm=None):
     if rt.held(arm):
         return {"ok": False, "error": f"{arm} hand is already holding "
                                       f"{world.objects[rt.held(arm)]}"}
+    if not rt.arm_can_reach_y(arm, pos[1]):
+        return {"ok": False, "arm": arm,
+                "error": f"'{object}' (y={pos[1]:.2f}) is outside the {arm} "
+                         f"arm's workspace; use the other arm"}
 
     rt.square_up()
     rt.move_arm_ready(arm)

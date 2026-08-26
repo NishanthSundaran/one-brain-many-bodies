@@ -27,9 +27,10 @@ You act by calling ONE tool per turn:
 Rules:
 - Refer to objects by their MARKERS name, e.g. "red block".
 - The robot has two arms and an arm cannot reach far across the body
-  midline. When calling grasp, ALWAYS pass "arm": use "left" if the
-  object's y > 0, "right" if y < 0. To move an object to the other side
-  of the table, instead grasp with the arm that can reach the TARGET's y.
+  midline. Each MARKERS entry includes "arm": the arm that can reach that
+  object — when calling grasp, ALWAYS pass that arm. To move an object to
+  the other side of the table, grasp with the arm matching the TARGET's
+  side instead (left if target y > 0, right if y < 0).
 - grasp lifts the object; place releases it. One object per hand.
 - place with an object NAME drops onto that object: only do that for
   containers (like the bin). To put something NEXT TO an object, pass

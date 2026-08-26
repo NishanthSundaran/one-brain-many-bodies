@@ -20,8 +20,31 @@ DROP = 0.07
 RETRACT = 0.15
 
 
+CLEARANCE = 0.10
+
+
+def _avoid_objects(rt, world, tpos, held):
+    """Collision-aware placement: if a coordinate target would drop the
+    object onto another one, shift it sideways to a clear spot."""
+    note = None
+    for bname in world.objects:
+        if bname == held or bname not in world.graspable:
+            continue
+        obs = world.object_pos(bname)
+        d = tpos[:2] - obs[:2]
+        dist = np.linalg.norm(d)
+        if dist < CLEARANCE - 1e-9:
+            direction = d / dist if dist > 1e-6 else np.array([0.0, 1.0])
+            tpos = tpos.copy()
+            tpos[:2] = obs[:2] + direction * CLEARANCE
+            note = (f"placement shifted to {tpos.round(3).tolist()} to avoid "
+                    f"dropping onto {world.objects[bname]}")
+    return tpos, note
+
+
 def run(rt, world, target, arm=None):
     from skills.registry import resolve_object
+    note = None
     if isinstance(target, str):
         bname = resolve_object(world, target)
         if bname is None:
@@ -29,12 +52,32 @@ def run(rt, world, target, arm=None):
         tpos = world.object_pos(bname)
     else:
         tpos = np.asarray(target, dtype=float)
+        held_body = next((rt.held(s) for s in rt.arm if rt.held(s)), None)
+        tpos, note = _avoid_objects(rt, world, tpos, held_body)
 
     if arm is None:
         arm = next((s for s in rt.arm if rt.held(s)), None)
     if arm is None or not rt.held(arm):
         return {"ok": False, "error": "not holding anything"}
     held_name = world.objects[rt.held(arm)]
+    if not rt.arm_can_reach_y(arm, tpos[1]):
+        # same graceful degradation as an out-of-reach servo, but decided
+        # up front: set the object down mid-table without any flailing
+        drop = [world.table_x - 0.08, 0.0, world.table_top + DROP]
+        rt.square_up()
+        rt.servo_ee(arm, [drop[0], drop[1], drop[2] + HOVER], speed=0.18,
+                    tol=0.05, timeout=4.0)
+        rt.servo_ee(arm, drop, speed=0.1, tol=0.03, timeout=3.0)
+        rt.set_hand(arm, "open")
+        held = rt.held(arm)
+        rt.release(arm)
+        rt.step(0.3)
+        rt.recover(arm)
+        set_down = world.object_pos(held).round(3).tolist() if held else None
+        return {"ok": False, "arm": arm,
+                "error": f"target y={tpos[1]:.2f} is outside the {arm} arm's "
+                         f"workspace; {held_name} was set down at {set_down}. "
+                         f"Grasp it with the other arm and place it."}
 
     rt.square_up()
     # safe-height waypoint: travel above tabletop clutter, then descend
@@ -63,4 +106,7 @@ def run(rt, world, target, arm=None):
     rt.release(arm)
     rt.step(0.4)  # let it settle
     rt.servo_ee(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
-    return {"ok": True, "arm": arm, "placed": held_name}
+    result = {"ok": True, "arm": arm, "placed": held_name}
+    if note:
+        result["note"] = note
+    return result

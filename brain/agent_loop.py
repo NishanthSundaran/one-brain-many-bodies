@@ -68,7 +68,8 @@ class Agent:
         for step in range(max_steps):
             png, markers = self._perceive()
             marker_txt = json.dumps(
-                {mid: {"name": m["name"], "position": m["pos"]}
+                {mid: {"name": m["name"], "position": m["pos"],
+                       "arm": self.rt.nearest_arm(m["pos"])}
                  for mid, m in markers.items()})
             parts = [f"TASK: {command}", f"MARKERS: {marker_txt}"]
             if history:
