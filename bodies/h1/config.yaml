@@ -68,6 +68,17 @@ arms:
 
 gaze_joint: torso
 
+locomotion:
+  legs:
+    left: [left_hip_pitch, left_knee, left_ankle]
+    right: [right_hip_pitch, right_knee, right_ankle]
+  arm_swing: {left: left_shoulder_pitch, right: right_shoulder_pitch}
+  step_freq: 1.7
+  bob: 0.012
+  hip_amp: 0.35
+  knee_amp: 0.5
+  arm_amp: 0.25
+
 scene:
   table_top: 0.95   # matched to the H1's higher workspace
   table_x: 0.45

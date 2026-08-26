@@ -6,9 +6,9 @@ name (or SoM marker resolution happens above this layer, in the brain).
 
 from __future__ import annotations
 
-from skills import grasp, home, look_at, place, reach
+from skills import grasp, home, look_at, place, reach, walk_to
 
-_MODULES = [reach, grasp, place, look_at, home]
+_MODULES = [reach, grasp, place, look_at, home, walk_to]
 
 SKILLS = {m.SCHEMA["name"]: (m.SCHEMA, m.run) for m in _MODULES}
 

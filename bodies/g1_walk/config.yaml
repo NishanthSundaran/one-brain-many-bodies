@@ -1,0 +1,122 @@
+# Unitree G1 body definition. Everything robot-specific lives here;
+# bodies/body.py and everything above it must stay embodiment-agnostic.
+name: g1_walk
+mjcf: third_party/menagerie/unitree_g1/g1_with_hands.xml
+root_body: pelvis
+keyframe: stand           # source of home pose and home ctrl
+
+arms:
+  left:
+    joints:
+      - left_shoulder_pitch_joint
+      - left_shoulder_roll_joint
+      - left_shoulder_yaw_joint
+      - left_elbow_joint
+      - left_wrist_roll_joint
+      - left_wrist_pitch_joint
+      - left_wrist_yaw_joint
+    ee_parent: left_wrist_yaw_link
+    ee_offset: [0.08, 0.0, 0.0]
+    # elbow-up pre-manipulation pose: well-conditioned Jacobian for servoing
+    ready: [-0.9, 0.25, 0.05, 1.0, 0.0, 0.0, 0.0]
+    # canonical palm orientation for tabletop work (world frame, wxyz):
+    # fingers forward, palm down
+    ee_quat: [1.0, 0.0, 0.0, 0.0]
+    reach_min_y: -0.05    # short arms: barely crosses the body midline
+    # human-like arm raise: lift sideways with elbow bent, then extend forward
+    ready_via:
+      - [0.0, 1.1, 0.0, 1.6, 0.0, 0.0, 0.0]
+      - [0.0, 1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
+    hand:
+      link_prefix: left_hand_
+      actuators: [left_hand_thumb_0_joint, left_hand_thumb_1_joint,
+               left_hand_thumb_2_joint, left_hand_index_0_joint,
+               left_hand_index_1_joint, left_hand_middle_0_joint,
+               left_hand_middle_1_joint]
+      open: [0, 0, 0, 0, 0, 0, 0]
+      closed: [0.8, 0.6, 1.0, -1.0, -1.1, -1.0, -1.1]
+  right:
+    joints:
+      - right_shoulder_pitch_joint
+      - right_shoulder_roll_joint
+      - right_shoulder_yaw_joint
+      - right_elbow_joint
+      - right_wrist_roll_joint
+      - right_wrist_pitch_joint
+      - right_wrist_yaw_joint
+    ee_parent: right_wrist_yaw_link
+    ee_offset: [0.08, 0.0, 0.0]
+    ready: [-0.9, -0.25, -0.05, 1.0, 0.0, 0.0, 0.0]
+    ee_quat: [1.0, 0.0, 0.0, 0.0]
+    reach_max_y: 0.05
+    ready_via:
+      - [0.0, -1.1, 0.0, 1.6, 0.0, 0.0, 0.0]
+      - [0.0, -1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
+    hand:
+      link_prefix: right_hand_
+      actuators: [right_hand_thumb_0_joint, right_hand_thumb_1_joint,
+               right_hand_thumb_2_joint, right_hand_index_0_joint,
+               right_hand_index_1_joint, right_hand_middle_0_joint,
+               right_hand_middle_1_joint]
+      open: [0, 0, 0, 0, 0, 0, 0]
+      closed: [-0.8, -0.6, -1.0, 1.0, 1.1, 1.0, 1.1]
+
+gaze_joint: waist_yaw_joint   # used by look_at; omit on bodies with fixed torsos
+
+mobile: true    # floating base, balanced by a learned policy
+
+locomotion:
+  # pretrained MJX/PPO joystick policy (MuJoCo Playground, Apache-2.0)
+  policy: third_party/policies/g1_policy.onnx
+  ctrl_dt: 0.02
+  action_scale: 0.5
+  gait_freq: 1.5
+  imu_site: imu_in_pelvis
+  # Actuation the policy was trained against (Playground's G1: kp 75/20/2,
+  # explicit joint damping and armature, Euler integrator). Menagerie ships
+  # kp=500 with dampratio damping — six times stiffer — and the policy falls
+  # over immediately under it, so these are applied after the model compiles.
+  integrator: Euler
+  solver_iterations: 3
+  solver_ls_iterations: 5
+  kp: [75, 75, 75, 75, 20, 2, 75, 75, 75, 75, 20, 2, 75, 75, 75, 75, 75, 75, 75, 2, 2, 2, 75, 75, 75, 75, 2, 2, 2]
+  damping: [2, 2, 2, 2, 1, 0.2, 2, 2, 2, 2, 1, 0.2, 2, 2, 2, 2, 2, 2, 2, 0.2, 0.2, 0.2, 2, 2, 2, 2, 0.2, 0.2, 0.2]
+  armature: [0.01018, 0.0251, 0.01018, 0.0251, 0.00722, 0.00722, 0.01018, 0.0251, 0.01018, 0.0251, 0.00722, 0.00722, 0.01018, 0.00722, 0.00722, 0.00361, 0.00361, 0.00361, 0.00361, 0.00361, 0.00425, 0.00425, 0.00361, 0.00361, 0.00361, 0.00361, 0.00361, 0.00425, 0.00425]
+  # the policy's nominal stance ("knees_bent"): root pose + 29 joint targets
+  stand_root: [0, 0, 0.755, 1, 0, 0, 0]
+  stand_angles: [-0.312, 0, 0, 0.669, -0.363, 0,
+                 -0.312, 0, 0, 0.669, -0.363, 0,
+                 0, 0, 0.073,
+                 0.2, 0.2, 0, 0.6, 0, 0, 0,
+                 0.2, -0.2, 0, 0.6, 0, 0, 0]
+  # Wider, lower stance used when the robot plants to manipulate: feet
+  # apart and knees more bent enlarges the support polygon and drops the
+  # centre of mass, so an arm reaching out does not tip it.
+  legs:
+    left: [left_hip_pitch_joint, left_knee_joint, left_ankle_pitch_joint]
+    right: [right_hip_pitch_joint, right_knee_joint, right_ankle_pitch_joint]
+  arm_swing: {left: left_shoulder_pitch_joint, right: right_shoulder_pitch_joint}
+  step_freq: 1.7
+  bob: 0.012
+  hip_amp: 0.35
+  knee_amp: 0.5
+  arm_amp: 0.25
+
+scene:
+  # Sized to the G1's measured reach: standing at the origin its hand covers
+  # ~0.35 m forward at pelvis height, and the pelvis needs ~0.25 m of
+  # clearance from the table edge because a walking robot sways.
+  table_top: 0.75
+  table_x: 0.48
+  table_half: [0.22, 0.4]
+  objects:
+    red block: [0.30, 0.15]
+    green block: [0.29, -0.10]
+    blue cup: [0.33, 0.09]
+    bin: [0.32, -0.21]
+
+head_camera:
+  parent: torso_link      # G1 has no separate head body; head is part of the torso mesh
+  pos: [0.07, 0.0, 0.42]  # eye level, ~1.25 m world height at stand
+  pitch_down_deg: 40.0    # look at the tabletop workspace
+  fovy: 75.0

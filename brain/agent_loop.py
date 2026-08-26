@@ -26,7 +26,7 @@ def _png(rgb: np.ndarray) -> bytes:
 # `reach` is subsumed by grasp/place, and `look_at` only invites stalls —
 # the head camera already sees the whole workspace and every marker ships
 # with its 3D position. Both remain available as skills.
-DEFAULT_TOOLS = ("grasp", "place", "home")
+DEFAULT_TOOLS = ("walk_to", "grasp", "place", "home")
 
 
 class Agent:
@@ -40,6 +40,13 @@ class Agent:
         self.system = build_system_prompt(schemas)
         self.schema = response_schema([s["name"] for s in schemas])
         self.transcript: list[dict] = []
+
+    def _table_name(self, pos) -> str:
+        t = self.world.table_of(pos)
+        for name, table in self.world.tables.items():
+            if t is not None and table is t:
+                return name
+        return "unknown"
 
     def _perceive(self) -> tuple[bytes, dict]:
         rgb = self.rig.rgb(self.world.data)
@@ -73,7 +80,8 @@ class Agent:
             png, markers = self._perceive()
             marker_txt = json.dumps(
                 {mid: {"name": m["name"], "position": m["pos"],
-                       "arm": self.rt.nearest_arm(m["pos"])}
+                       "arm": self.rt.nearest_arm(m["pos"]),
+                       "table": self._table_name(m["pos"])}
                  for mid, m in markers.items()})
             parts = [f"TASK: {command}", f"MARKERS: {marker_txt}"]
             if history:

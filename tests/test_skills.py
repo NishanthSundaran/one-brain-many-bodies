@@ -20,7 +20,8 @@ def rt_world():
 
 
 def test_registry_complete():
-    assert set(SKILLS) == {"reach", "grasp", "place", "look_at", "home"}
+    assert set(SKILLS) == {"reach", "grasp", "place", "look_at",
+                           "home", "walk_to"}
     for schema in tool_schemas():
         assert schema["name"] and schema["parameters"]["type"] == "object"
 

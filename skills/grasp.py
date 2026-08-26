@@ -32,12 +32,16 @@ def run(rt, world, object, arm=None):
     if rt.held(arm):
         return {"ok": False, "error": f"{arm} hand is already holding "
                                       f"{world.objects[rt.held(arm)]}"}
-    if not rt.arm_can_reach_y(arm, pos[1]):
+    if not rt.arm_can_reach(arm, pos):
         return {"ok": False, "arm": arm,
-                "error": f"'{object}' (y={pos[1]:.2f}) is outside the {arm} "
-                         f"arm's workspace; use the other arm"}
+                "error": f"'{object}' is outside the {arm} arm's workspace; "
+                         f"use the other arm"}
 
     rt.square_up()
+    rt.plant()          # stop stepping; stiffen into stance to work
+    if rt.reposition_for(pos):        # walked? re-read the object and arm
+        pos = world.object_pos(bname)
+        arm = rt.nearest_arm(pos)
     rt.move_arm_ready(arm)
     # safe-height waypoint: travel above tabletop clutter, then descend
     rt.servo_ee(arm, [pos[0], pos[1], pos[2] + APPROACH + 0.06],

@@ -77,16 +77,35 @@ class Body:
                 act.ctrlrange = j.range
                 act.ctrllimited = True
 
-        # v1: fixed base. Drop the free joint and plant the root at its
-        # keyframe pose; the remaining qpos layout is the joints only.
+        # A mobile body keeps its free joint and walks under a physics
+        # policy; a fixed-base body drops the joint and is planted at the
+        # keyframe pose (simpler, and all that tabletop work needs).
+        self.mobile = bool(cfg.get("mobile", False))
         root = self.spec.body(cfg["root_body"])
-        free = [j for j in root.joints if j.type == mujoco.mjtJoint.mjJNT_FREE]
-        for j in free:
-            self.spec.delete(j)
-        root.pos = key_qpos[:3]
-        root.quat = key_qpos[3:7]
-        self.home_qpos = key_qpos[7:]
-        self.home_ctrl = key_ctrl
+        loco = cfg.get("locomotion", {})
+        if self.mobile:
+            self.root_qpos = np.asarray(
+                loco.get("stand_root", key_qpos[:7]), dtype=float)
+            self.home_qpos = np.asarray(
+                loco.get("stand_angles", key_qpos[7:]), dtype=float)
+            self.home_ctrl = np.asarray(
+                loco.get("stand_angles", key_ctrl), dtype=float)
+            # the policy reads a pelvis IMU: give the body one
+            imu = loco.get("imu_site", "imu_in_pelvis")
+            self.spec.add_sensor(
+                name="local_linvel_pelvis", type=mujoco.mjtSensor.mjSENS_VELOCIMETER,
+                objtype=mujoco.mjtObj.mjOBJ_SITE, objname=imu)
+            self.spec.add_sensor(
+                name="gyro_pelvis", type=mujoco.mjtSensor.mjSENS_GYRO,
+                objtype=mujoco.mjtObj.mjOBJ_SITE, objname=imu)
+        else:
+            for j in [j for j in root.joints
+                      if j.type == mujoco.mjtJoint.mjJNT_FREE]:
+                self.spec.delete(j)
+            root.pos = key_qpos[:3]
+            root.quat = key_qpos[3:7]
+            self.home_qpos = key_qpos[7:]
+            self.home_ctrl = key_ctrl
 
         # Body composition: bolt a dexterous hand from another menagerie
         # model onto the wrist (e.g. Sharpa Wave five-finger hands on the
@@ -129,8 +148,34 @@ class Body:
 
     # -- post-compile introspection (call after the world compiles the spec) --
 
+    def apply_locomotion_dynamics(self, model: mujoco.MjModel) -> None:
+        """Retune actuators/joints to the dynamics the locomotion policy was
+        trained against. A policy is only valid for the plant it learned on:
+        under Menagerie's much stiffer default gains this one falls instantly."""
+        from controllers.locomotion import POLICY_JOINTS
+        loco = self.cfg.get("locomotion", {})
+        if "kp" not in loco:
+            return
+        for i, name in enumerate(POLICY_JOINTS):
+            act = model.actuator(name).id
+            kp = float(loco["kp"][i])
+            model.actuator_gainprm[act, 0] = kp
+            model.actuator_biasprm[act, 1] = -kp
+            model.actuator_biasprm[act, 2] = 0.0   # policy assumes no kv term
+            dof = model.joint(name).dofadr[0]
+            model.dof_damping[dof] = float(loco["damping"][i])
+            model.dof_armature[dof] = float(loco["armature"][i])
+        if loco.get("integrator") == "Euler":
+            model.opt.integrator = mujoco.mjtIntegrator.mjINT_EULER
+        model.opt.iterations = int(loco.get("solver_iterations",
+                                            model.opt.iterations))
+        model.opt.ls_iterations = int(loco.get("solver_ls_iterations",
+                                               model.opt.ls_iterations))
+
     def bind(self, model: mujoco.MjModel) -> None:
         self.model = model
+        if self.mobile:
+            self.apply_locomotion_dynamics(model)
         self.joint_names = [model.joint(i).name for i in range(model.njnt)
                             if model.joint(i).type[0] != mujoco.mjtJoint.mjJNT_FREE]
         self.joint_limits = {n: tuple(model.joint(n).range) for n in self.joint_names}
@@ -146,6 +191,18 @@ class Body:
 
     def reset(self, data: mujoco.MjData) -> None:
         """Home pose for the robot's own dofs; leaves any scene objects alone."""
+        if self.mobile:
+            # Index by joint NAME: attached hands interleave their actuators
+            # with the arms, so positional slicing writes the wrong joints.
+            from controllers.locomotion import POLICY_JOINTS
+            root = self.model.body(self.cfg["root_body"]).id
+            adr = self.model.jnt_qposadr[self.model.body_jntadr[root]]
+            data.qpos[adr:adr + 7] = self.root_qpos
+            for name, q in zip(POLICY_JOINTS, self.home_qpos):
+                data.qpos[self.model.joint(name).qposadr[0]] = q
+            for name, c in zip(POLICY_JOINTS, self.home_ctrl):
+                data.ctrl[self.actuator_of[name]] = c
+            return
         for i, n in enumerate(self.joint_names[: len(self.home_qpos)]):
             data.qpos[self.model.joint(n).qposadr[0]] = self.home_qpos[i]
         data.ctrl[: len(self.home_ctrl)] = self.home_ctrl

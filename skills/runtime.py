@@ -6,16 +6,22 @@ mid-level API between the VLM brain and the physics.
 
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 import mujoco
 
+REPO = pathlib.Path(__file__).resolve().parents[1]
+
 ACCEL_MAX = 0.8      # m/s^2 command-velocity ramp: no robotic jump-starts
 ROT_GAIN = 2.5       # 1/s toward the canonical palm orientation
 ROT_MAX = 1.2        # rad/s
+STATION_SPEED = 0.3  # m/s cap while holding a station
 
 from bodies.body import EE_SITE
+from controllers.locomotion import POLICY_JOINTS
 from controllers.diff_ik import DiffIK
 from controllers.admittance import joint_limit_scale
 
@@ -46,10 +52,39 @@ class Runtime:
         self._t = 0.0
         self._held: dict[str, str | None] = {s: None for s in self.arm}
 
+        # Locomotion. A mobile body walks under a learned policy running in
+        # closed loop on the real physics state; there is no scripted base
+        # motion anywhere. While the arms work, the policy keeps the legs
+        # and waist (it must go on balancing) and the arm controller owns
+        # the arms.
+        self.root_id = self.model.body(self.body.cfg["root_body"]).id
+        self.loco = None
+        self.station = None   # (xy, yaw) the standing controller holds
+        self._station_i = np.zeros(2)   # integral state of the station PI
+        self._station_speed = STATION_SPEED
+        self._planted = False           # stance mode (see plant/unplant)
+        self._nominal_gain = self.model.actuator_gainprm[:, 0].copy()
+        if self.body.mobile:
+            from controllers.locomotion import LocomotionPolicy
+            cfg = self.body.cfg["locomotion"]
+            self.loco = LocomotionPolicy(
+                self.model, REPO / cfg["policy"], cfg["stand_angles"],
+                ctrl_dt=cfg.get("ctrl_dt", 0.02),
+                action_scale=cfg.get("action_scale", 0.5),
+                gait_freq=cfg.get("gait_freq", 1.5))
+            self.loco.controlled = "leg_waist"
+            # hold the start pose: facing +x at the primary table's station
+            self.station = (np.array(self.model.body_pos[self.root_id][:2]), 0.0)
+            self.step(3.0)   # PI station keeping converges in ~3 s
+        self._fixed_base_xy = np.array(self.model.body_pos[self.root_id][:2])
+
     # ---------------- core stepping ----------------
 
     def step(self, seconds: float) -> None:
         for _ in range(int(round(seconds / self.dt))):
+            if self.loco is not None and not self._planted:
+                self._hold_station()
+                self.loco.step(self.data)
             mujoco.mj_step(self.model, self.data)
             self._t += self.dt
             if self.on_frame is not None:
@@ -58,30 +93,248 @@ class Runtime:
     def ee_pos(self, side: str) -> np.ndarray:
         return self.data.site_xpos[self.ik[side].site_id].copy()
 
-    def nearest_arm(self, pos) -> str:
-        return "left" if pos[1] > 0 else "right"
+    # ---------------- base frame ----------------
 
-    def arm_can_reach_y(self, side: str, y: float) -> bool:
+    @property
+    def base_xy(self) -> np.ndarray:
+        """Live pelvis position: for a walking robot this is physics state,
+        not a number we set."""
+        if self.body.mobile:
+            return self.data.xpos[self.root_id][:2].copy()
+        return self._fixed_base_xy
+
+    @property
+    def base_yaw(self) -> float:
+        if not self.body.mobile:
+            return 0.0
+        R = self.data.xmat[self.root_id].reshape(3, 3)
+        return float(np.arctan2(R[1, 0], R[0, 0]))
+
+    def to_base(self, world_pos) -> np.ndarray:
+        """World point -> robot base frame (+x forward, +y left). Arm choice
+        and reach gates are body-relative, so they must survive walking."""
+        p = np.asarray(world_pos, dtype=float)
+        d = p[:2] - self.base_xy
+        c, s = np.cos(-self.base_yaw), np.sin(-self.base_yaw)
+        return np.array([c * d[0] - s * d[1], s * d[0] + c * d[1],
+                         p[2] if len(p) > 2 else 0.0])
+
+    def to_world(self, base_pos) -> np.ndarray:
+        p = np.asarray(base_pos, dtype=float)
+        c, s = np.cos(self.base_yaw), np.sin(self.base_yaw)
+        return np.array([self.base_xy[0] + c * p[0] - s * p[1],
+                         self.base_xy[1] + s * p[0] + c * p[1],
+                         p[2] if len(p) > 2 else 0.0])
+
+    def nearest_arm(self, pos) -> str:
+        return "left" if self.to_base(pos)[1] > 0 else "right"
+
+    def arm_can_reach(self, side: str, world_pos) -> bool:
         """Cheap workspace gate from config: refuse cross-body targets
-        before moving instead of flailing through the scene."""
+        before moving instead of flailing through the scene. Takes a world
+        point and judges it in the base frame, so it stays correct after
+        the robot has walked and turned."""
         cfg = self.body.cfg["arms"][side]
+        y = self.to_base(world_pos)[1]
         if side == "left" and "reach_min_y" in cfg:
             return y >= cfg["reach_min_y"]
         if side == "right" and "reach_max_y" in cfg:
             return y <= cfg["reach_max_y"]
         return True
 
+    # ---------------- locomotion ----------------
+
+    @staticmethod
+    def _wrap(a: float) -> float:
+        return (a + np.pi) % (2 * np.pi) - np.pi
+
+    def _hold_station(self) -> None:
+        """Station keeping. The policy is a *locomotion* policy: commanded to
+        zero velocity it still creeps (~0.2 m/s here), and a robot that creeps
+        walks into the table it is working at. Standing still is therefore its
+        own closed-loop problem. Proportional feedback alone leaves a standing
+        offset against that constant bias, so this is a PI controller — the
+        integral term learns the creep and cancels it."""
+        if self.station is None:
+            return
+        xy, yaw = self.station
+        err = np.asarray(xy) - self.base_xy
+        c, s = np.cos(-self.base_yaw), np.sin(-self.base_yaw)
+        e = np.array([c * err[0] - s * err[1], s * err[0] + c * err[1]])
+        yaw_err = self._wrap(yaw - self.base_yaw)
+
+        self._station_i = np.clip(self._station_i + e * self.dt * 0.8,
+                                  -0.35, 0.35)          # anti-windup
+        cap = self._station_speed
+        v = np.clip(1.2 * e + self._station_i, -cap, cap)
+        v[np.abs(e) < 0.02] *= 0.5                      # calm near the target
+        self.loco.set_command(
+            float(v[0]), float(v[1]),
+            0.0 if abs(yaw_err) < 0.05
+            else float(np.clip(2.0 * yaw_err, -0.7, 0.7)))
+
+    def _both_feet_down(self) -> bool:
+        feet = {self.model.body(f"{s}_ankle_roll_link").id
+                for s in ("left", "right")}
+        touching = set()
+        for c in range(self.data.ncon):
+            for g in (self.data.contact[c].geom1, self.data.contact[c].geom2):
+                b = self.model.geom_bodyid[g]
+                if b in feet:
+                    touching.add(b)
+        return len(touching) == 2
+
+    def reposition_for(self, world_pos, forward: float = 0.30,
+                       band=(0.22, 0.38)) -> bool:
+        """Walking robots do not stop on a mark: the policy leaves the base a
+        few centimetres from its station, which is the difference between a
+        target being reachable and not. If the target sits outside the arm's
+        comfortable band, step the base so it lands inside. Returns True if
+        the robot repositioned."""
+        if self.loco is None:
+            return False
+        local = self.to_base(world_pos)
+        if band[0] <= local[0] <= band[1] and abs(local[1]) <= 0.28:
+            return False
+        yaw = self.base_yaw
+        side = float(np.clip(local[1], -0.16, 0.16))
+        offset = np.array([np.cos(yaw) * forward - np.sin(yaw) * side,
+                           np.sin(yaw) * forward + np.cos(yaw) * side])
+        self.unplant()
+        self.walk_to(*(np.asarray(world_pos)[:2] - offset), face=world_pos[:2])
+        self.plant()
+        return True
+
+    def plant(self, stiffness: float = 6.0,
+              damping_ratio: float = 0.08) -> None:
+        """Enter stance: stop stepping and stiffen the legs around the pose
+        the policy left them in. The base stays free and fully physical —
+        the robot balances statically on its feet, and would topple if the
+        arms pulled the centre of mass outside the support polygon. This is
+        how the walking controller hands over to the manipulation
+        controller: the locomotion policy cannot rebalance while the arm
+        controller owns the arms, so it is not left fighting for them."""
+        if self.loco is None or self._planted:
+            return
+        names = self.loco.policy_joint_names()
+        acts = [self.model.actuator(n).id for n in names]
+        loco_cfg = self.body.cfg["locomotion"]
+        stance = {n: float(v) for n, v in
+                  zip(POLICY_JOINTS, loco_cfg.get("stance_angles",
+                                                  loco_cfg["stand_angles"]))}
+        target = np.array([stance[n] for n in names])
+
+        # Wait for double support: freezing mid-step, with one foot in the
+        # air, drops the robot on the spot.
+        deadline = self._t + 3.0
+        while self._t < deadline and not self._both_feet_down():
+            self.step(self.dt)
+        # read the pose *after* the wait — it moved while we waited
+        measured = np.array([self.data.qpos[self.model.joint(n).qposadr[0]]
+                             for n in names])
+
+        # Hand over in one shot. Ramping first would fight the policy, which
+        # keeps overwriting the same actuators at 50 Hz.
+        self._planted = True
+        self.station = None
+        # Stance needs stiff joints to hold the pose against gravity, and
+        # stiff position gains are only stable under implicit integration —
+        # the explicit Euler step the policy runs under blows up. The policy
+        # is stopped now, so the integrator is free to change.
+        self.model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        for act in acts:
+            kp = self._nominal_gain[act] * stiffness
+            self.model.actuator_gainprm[act, 0] = kp
+            self.model.actuator_biasprm[act, 1] = -kp
+            self.model.actuator_biasprm[act, 2] = -damping_ratio * kp
+        # Take over at the measured pose, then ease to the balanced stance.
+        # Snapping straight to the stance shoves the base ~0.15 m forward as
+        # the legs straighten; holding the measured mid-gait pose is not
+        # statically stable. Ramping does both jobs.
+        self.data.ctrl[acts] = measured
+        n_ramp = max(1, int(1.0 / self.dt))
+        for i in range(n_ramp):
+            s = (i + 1) / n_ramp
+            s = s * s * (3 - 2 * s)
+            self.data.ctrl[acts] = (1 - s) * measured + s * target
+            self.step(self.dt)
+        self.step(0.4)
+
+    def unplant(self) -> None:
+        """Leave stance and give the legs back to the walking policy."""
+        if self.loco is None or not self._planted:
+            return
+        for name in self.loco.policy_joint_names():
+            act = self.model.actuator(name).id
+            kp = self._nominal_gain[act]
+            self.model.actuator_gainprm[act, 0] = kp
+            self.model.actuator_biasprm[act, 1] = -kp
+            self.model.actuator_biasprm[act, 2] = 0.0
+        self.model.opt.integrator = mujoco.mjtIntegrator.mjINT_EULER
+        self._planted = False
+        self._station_i[:] = 0.0
+        self.station = (self.base_xy.copy(), self.base_yaw)
+        self.step(0.5)
+
+    def _goto(self, xy, yaw: float, tol: float, yaw_tol: float,
+              timeout: float, speed: float) -> bool:
+        """Drive the base to a pose with the station PI. The same controller
+        walks and stands: its integral term is what cancels the policy's
+        forward creep, which is exactly the error that ruins both."""
+        self.station = (np.asarray(xy, dtype=float), yaw)
+        self._station_i[:] = 0.0
+        self._station_speed = speed
+        t_end = self._t + timeout
+        while self._t < t_end:
+            if (np.linalg.norm(np.asarray(xy) - self.base_xy) < tol
+                    and abs(self._wrap(yaw - self.base_yaw)) < yaw_tol):
+                break
+            self.step(self.dt)
+        self._station_speed = STATION_SPEED
+        return np.linalg.norm(np.asarray(xy) - self.base_xy) < tol * 2.0
+
+    def walk_to(self, x: float, y: float, face=None, speed: float = 0.5,
+                tol: float = 0.10, timeout: float = 40.0) -> bool:
+        """Walk to (x, y) under the locomotion policy: the base controller
+        issues velocity commands and the policy does the stepping, balancing
+        against real contact forces. Optionally turn to face a world point.
+        """
+        if self.loco is None:
+            raise RuntimeError("this body has no locomotion policy")
+        target = np.array([x, y], dtype=float)
+        self.home()          # arms down (a held object stays raised)
+        self.unplant()
+
+        # Turn towards the goal first, holding station while turning: the
+        # policy creeps forward through every turn otherwise.
+        delta = target - self.base_xy
+        if np.linalg.norm(delta) > tol:
+            heading = float(np.arctan2(delta[1], delta[0]))
+            self._goto(self.base_xy.copy(), heading, 0.25, 0.12, 8.0, 0.3)
+            heading = float(np.arctan2(*(target - self.base_xy)[::-1]))
+            self._goto(target, heading, tol, np.pi, timeout, speed)
+
+        final_yaw = self.base_yaw
+        if face is not None:
+            fd = np.asarray(face, dtype=float)[:2] - self.base_xy
+            final_yaw = float(np.arctan2(fd[1], fd[0]))
+        self._goto(target, final_yaw, tol, 0.10, 10.0, 0.3)
+        self.step(1.0)       # settle into a stable stance
+        return bool(np.linalg.norm(target - self.base_xy) < tol * 2.5)
+
     # ---------------- arm servoing ----------------
 
     def _orientation_twist(self, side: str) -> np.ndarray:
         """Angular velocity steering the palm back to the arm's canonical
-        manipulation orientation (config `ee_quat`, world frame). Bodies
-        without the config key (e.g. 4-DoF H1 arms) get no orientation task."""
+        manipulation orientation. `ee_quat` is given in the BASE frame and
+        rotated by the current heading, so it stays correct after walking.
+        Bodies without the key (e.g. 4-DoF H1 arms) get no orientation task."""
         quat = self.body.cfg["arms"][side].get("ee_quat")
         if quat is None:
             return np.zeros(3)
         R_cur = self.data.site_xmat[self.ik[side].site_id].reshape(3, 3)
-        R_des = Rotation.from_quat(np.roll(quat, -1)).as_matrix()
+        R_des = (Rotation.from_euler("z", self.base_yaw).as_matrix()
+                 @ Rotation.from_quat(np.roll(quat, -1)).as_matrix())
         w = ROT_GAIN * Rotation.from_matrix(R_des @ R_cur.T).as_rotvec()
         n = np.linalg.norm(w)
         return w * (ROT_MAX / n) if n > ROT_MAX else w
@@ -130,6 +383,23 @@ class Runtime:
             s = s * s * (3 - 2 * s)  # smoothstep profile
             self.data.ctrl[a["act"]] = (1 - s) * start + s * np.asarray(target)
             self.step(self.dt)
+
+    def set_down_spot(self, world) -> list:
+        """A neutral spot on the table in front of the robot, reachable by
+        either arm — where a stuck hand puts its object down."""
+        front = self.to_world([0.42, 0.0])
+        table = world.table_of([front[0], front[1], world.table_top]) \
+            or world.tables["table"]
+        return [front[0], front[1], table["top"] + 0.07]
+
+    def home(self) -> None:
+        """Empty arms to the resting pose; an arm holding something keeps it
+        raised in the ready pose instead of swinging it down to the floor."""
+        for side in self.arm:
+            if self.held(side):
+                self.move_arm_ready(side)
+            else:
+                self.move_arm_home(side)
 
     def move_arm_home(self, side: str, duration: float = 1.5) -> None:
         """Reverse of the ready swing: retract over the table, out to the
@@ -181,7 +451,11 @@ class Runtime:
 
     def square_up(self, duration: float = 0.6) -> None:
         """Return the gaze/waist joint to neutral: manipulation poses are
-        tuned for an unrotated torso."""
+        tuned for an unrotated torso. On a balancing robot the waist belongs
+        to the locomotion policy — writing it here fights the balance loop
+        at 50 Hz and walks the robot away from its station."""
+        if self.loco is not None:
+            return
         gaze = self.body.cfg.get("gaze_joint")
         if gaze is None:
             return
