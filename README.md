@@ -25,7 +25,7 @@
 |---|------|--------|
 | 0 | G1 standing in MuJoCo | ✅ `demos/01_stand.py` |
 | 1 | Head-camera view with Set-of-Mark object markers | ✅ `demos/02_som_view.py` |
-| 2 | Compliant arm: drag the hand, tanh-damped admittance response | ⬜ |
+| 2 | Compliant arm: drag the hand, tanh-damped admittance response | ✅ `demos/03_compliant_arm.py` |
 | 3 | Scripted pick-and-place skills | ⬜ |
 | 4 | Local VLM brain executes a typed command | ⬜ |
 | 5 | **Same brain, two bodies: G1 and H1 side by side** | ⬜ |
