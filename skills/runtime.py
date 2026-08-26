@@ -19,6 +19,7 @@ ACCEL_MAX = 0.8      # m/s^2 command-velocity ramp: no robotic jump-starts
 ROT_GAIN = 2.5       # 1/s toward the canonical palm orientation
 ROT_MAX = 1.2        # rad/s
 STATION_SPEED = 0.3  # m/s cap while holding a station
+LATERAL_SPEED = 0.3  # m/s cap on sideways commands (topples above this)
 
 from bodies.body import EE_SITE
 from controllers.locomotion import POLICY_JOINTS
@@ -59,6 +60,7 @@ class Runtime:
         # the arms.
         self.root_id = self.model.body(self.body.cfg["root_body"]).id
         self.loco = None
+        self.walk_speed = 0.5
         self.station = None   # (xy, yaw) the standing controller holds
         self._station_i = np.zeros(2)   # integral state of the station PI
         self._station_speed = STATION_SPEED
@@ -72,7 +74,9 @@ class Runtime:
                 ctrl_dt=cfg.get("ctrl_dt", 0.02),
                 action_scale=cfg.get("action_scale", 0.5),
                 gait_freq=cfg.get("gait_freq", 1.5))
-            self.loco.controlled = "leg_waist"
+            self.loco.controlled = (
+                None if cfg.get("policy_owns") == "all" else "leg_waist")
+            self.walk_speed = float(cfg.get("walk_speed", 0.5))
             # hold the start pose: facing +x at the primary table's station
             self.station = (np.array(self.model.body_pos[self.root_id][:2]), 0.0)
             self.step(3.0)   # PI station keeping converges in ~3 s
@@ -163,10 +167,25 @@ class Runtime:
         e = np.array([c * err[0] - s * err[1], s * err[0] + c * err[1]])
         yaw_err = self._wrap(yaw - self.base_yaw)
 
-        self._station_i = np.clip(self._station_i + e * self.dt * 0.8,
-                                  -0.35, 0.35)          # anti-windup
-        cap = self._station_speed
+        # The integral exists to cancel the policy's standing creep, so it
+        # only accumulates near the target. Left running during a metre-long
+        # approach it saturates and sails the robot straight past the goal.
+        near = np.abs(e) < 0.25
+        self._station_i = np.where(
+            near, np.clip(self._station_i + e * self.dt * 0.8, -0.35, 0.35),
+            self._station_i * 0.995)
+        # Forward and sideways get different caps: this robot walks forward
+        # well but a fast lateral command topples it, exactly as a person
+        # cannot side-step at walking speed.
+        cap = np.array([self._station_speed,
+                        min(self._station_speed, LATERAL_SPEED)])
         v = np.clip(1.2 * e + self._station_i, -cap, cap)
+        # Slow down while turning hard — but only when actually travelling.
+        # Applied while holding station it throttles the very correction that
+        # cancels the policy's creep, and the robot wanders metres away as it
+        # turns.
+        if np.linalg.norm(e) > 0.35:
+            v *= float(np.clip(1.0 - 1.4 * abs(yaw_err), 0.25, 1.0))
         v[np.abs(e) < 0.02] *= 0.5                      # calm near the target
         self.loco.set_command(
             float(v[0]), float(v[1]),
@@ -293,34 +312,63 @@ class Runtime:
         self._station_speed = STATION_SPEED
         return np.linalg.norm(np.asarray(xy) - self.base_xy) < tol * 2.0
 
-    def walk_to(self, x: float, y: float, face=None, speed: float = 0.5,
-                tol: float = 0.10, timeout: float = 40.0) -> bool:
-        """Walk to (x, y) under the locomotion policy: the base controller
-        issues velocity commands and the policy does the stepping, balancing
-        against real contact forces. Optionally turn to face a world point.
+    def walk_to(self, x: float, y: float, face=None, speed: float = None,
+                tol: float = 0.12, timeout: float = 45.0) -> bool:
+        """Walk to (x, y) under the locomotion policy.
+
+        A unicycle pursuit controller: always walk forwards, steering with
+        yaw rate, so the robot follows a curved path the way a person does.
+        Turning on the spot was tried first and is a trap here — this policy
+        creeps forward through every turn, so 'turn, then go' wanders metres
+        off course, and fighting the creep with backwards commands topples it.
         """
         if self.loco is None:
             raise RuntimeError("this body has no locomotion policy")
         target = np.array([x, y], dtype=float)
-        self.home()          # arms down (a held object stays raised)
+        speed = self.walk_speed if speed is None else speed
+        self.home()
         self.unplant()
+        self.station = None          # pursuit owns the commands while walking
 
-        # Turn towards the goal first, holding station while turning: the
-        # policy creeps forward through every turn otherwise.
-        delta = target - self.base_xy
-        if np.linalg.norm(delta) > tol:
-            heading = float(np.arctan2(delta[1], delta[0]))
-            self._goto(self.base_xy.copy(), heading, 0.25, 0.12, 8.0, 0.3)
-            heading = float(np.arctan2(*(target - self.base_xy)[::-1]))
-            self._goto(target, heading, tol, np.pi, timeout, speed)
+        t_end = self._t + timeout
+        while self._t < t_end:
+            err = target - self.base_xy
+            dist = float(np.linalg.norm(err))
+            if dist < tol:
+                break
+            bearing = self._wrap(float(np.arctan2(err[1], err[0]))
+                                 - self.base_yaw)
+            # Steer towards the target; walk slower the worse the heading is,
+            # and ease off over the last stride so it does not sail past.
+            # Yaw authority sets the turn radius (r = v / w). Too little and
+            # the robot orbits a target it cannot turn tightly enough to
+            # reach — which is exactly what a 0.6 rad/s cap did here.
+            wz = float(np.clip(1.4 * bearing, -1.1, 1.1))
+            # Never let forward speed reach zero: at a right-angle bearing
+            # that becomes a pivot on the spot, which this policy cannot do
+            # without creeping away. Keeping it walking turns the correction
+            # into an arc — which is how people walk round corners anyway.
+            vx = speed * float(np.clip(np.cos(bearing), 0.12, 1.0))
+            vx *= float(np.clip(dist / 0.5, 0.35, 1.0))   # ease off at the end
+            self.loco.set_command(vx, 0.0, wz)
+            self.step(self.dt)
 
+        # Close the last stride with the station controller, holding the
+        # *target* rather than wherever the pursuit ran out: a walking robot
+        # carries momentum and creep through the final step.
         final_yaw = self.base_yaw
         if face is not None:
-            fd = np.asarray(face, dtype=float)[:2] - self.base_xy
+            fd = np.asarray(face, dtype=float)[:2] - target
             final_yaw = float(np.arctan2(fd[1], fd[0]))
-        self._goto(target, final_yaw, tol, 0.10, 10.0, 0.3)
-        self.step(1.0)       # settle into a stable stance
-        return bool(np.linalg.norm(target - self.base_xy) < tol * 2.5)
+        # Hold where it stopped, not the target: pulling a walking robot
+        # backwards over the last half metre topples it. The cost is honest
+        # stopping accuracy of a few decimetres, which is what a velocity-
+        # commanded policy without a footstep planner gives you.
+        self._goto(self.base_xy.copy(), final_yaw, 0.30, 0.12, 8.0, 0.3)
+        self.station = (self.base_xy.copy(), final_yaw)
+        self._station_i[:] = 0.0
+        self.step(1.0)
+        return bool(np.linalg.norm(target - self.base_xy) < tol * 3.0)
 
     # ---------------- arm servoing ----------------
 

@@ -1,14 +1,17 @@
-"""Milestone 6: physics-based locomotion.
+"""Milestone 6: physics-based walking, tuned to look human.
 
-The G1 walks on its own two legs. A pretrained RL policy (MJX/PPO, from
-MuJoCo Playground) runs in closed loop at 50 Hz on the real IMU and joint
-state, and a pursuit controller feeds it velocity commands to reach each
-waypoint. Nothing about the base is scripted: no glide, no animation, no
-weld. Every step is contact and balance, and a bad command makes it fall.
+The G1 walks on its own two legs under a pretrained RL policy (MJX/PPO, from
+MuJoCo Playground) closing the loop at 50 Hz on real IMU and joint feedback.
+Nothing about the base is scripted — no glide, no animation, no weld.
 
-Also shown: station keeping. The policy is a *locomotion* policy — told to
-hold still it creeps forward — so standing on a spot is its own closed-loop
-problem, handled by a PI controller on the base pose.
+This demo runs the same walk twice to show what "human-like" cost:
+
+  before : the policy's default 1.5 Hz gait with the arms held still
+  after  : 1.3 Hz gait, arms left under the policy, faster commanded walk
+
+and prints the gait measurements next to human references. Cadence is
+compared after Froude scaling — a 0.65 m leg does not walk at a human's
+1.9 steps/s, it walks at about 2.2-2.5.
 """
 
 import pathlib
@@ -24,42 +27,30 @@ sys.path.insert(0, str(REPO))
 import mujoco  # noqa: E402
 
 from bodies.body import Body  # noqa: E402
+from controllers.locomotion import LocomotionPolicy  # noqa: E402
 from sim.cameras import CameraRig  # noqa: E402
-from skills.runtime import Runtime  # noqa: E402
 
-RECORD_FPS = 10
-PLAY_FPS = 20
-
-WAYPOINTS = [
-    ((1.6, 0.0), "walk forward"),
-    ((1.6, 1.0), "turn and walk left"),
-    ((0.0, 0.6), "walk back"),
-]
+RECORD_FPS = 12
+PLAY_FPS = 24
+WALK_SECONDS = 7.0
 
 
-class OpenWorld:
-    """Bare floor: this demo is about locomotion, not tabletops."""
-
-    def __init__(self, body):
-        self.body = body
-        w = body.spec.worldbody
-        w.add_light(pos=[2, -2, 3], dir=[-0.4, 0.4, -1], diffuse=[0.65] * 3,
-                    ambient=[0.35] * 3)
-        for i in range(-3, 4):   # stripes so the motion is visible
-            w.add_geom(name=f"stripe{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
-                       size=[0.02, 4.0, 0.001], pos=[i * 0.5, 0, 0.001],
-                       rgba=[0.42, 0.46, 0.52, 1])
-        w.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE,
-                   size=[8, 8, 0.1], rgba=[0.32, 0.36, 0.42, 1])
-        self.model = body.spec.compile()
-        self.data = mujoco.MjData(self.model)
-        body.bind(self.model)
-        body.reset(self.data)
-        mujoco.mj_forward(self.model, self.data)
-
-    def step(self, seconds):
-        for _ in range(int(round(seconds / self.model.opt.timestep))):
-            mujoco.mj_step(self.model, self.data)
+def build_world(body):
+    w = body.spec.worldbody
+    w.add_light(pos=[2, -2, 3], dir=[-0.4, 0.4, -1], diffuse=[0.7] * 3,
+                ambient=[0.32] * 3)
+    for i in range(-2, 14):   # ground markings, so the stride is visible
+        w.add_geom(name=f"stripe{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                   size=[0.012, 3.0, 0.001], pos=[i * 0.5, 0, 0.001],
+                   rgba=[0.44, 0.48, 0.54, 1])
+    w.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE,
+               size=[12, 12, 0.1], rgba=[0.32, 0.36, 0.42, 1])
+    model = body.spec.compile()
+    data = mujoco.MjData(model)
+    body.bind(model)
+    body.reset(data)
+    mujoco.mj_forward(model, data)
+    return model, data
 
 
 def caption(frame, lines):
@@ -69,66 +60,93 @@ def caption(frame, lines):
         font = ImageFont.load_default(size=15)
     except TypeError:
         font = ImageFont.load_default()
-    h = 10 + 19 * len(lines)
+    h = 8 + 19 * len(lines)
     draw.rectangle([0, frame.shape[0] - h, frame.shape[1], frame.shape[0]],
                    fill=(0, 0, 0))
     for i, (text, color) in enumerate(lines):
-        draw.text((8, frame.shape[0] - h + 4 + 19 * i), text, fill=color,
+        draw.text((8, frame.shape[0] - h + 3 + 19 * i), text, fill=color,
                   font=font)
     return np.asarray(img)
 
 
-def main() -> None:
+def run(label, gait_freq, speed, freeze_arms, color):
     body = Body(REPO / "bodies" / "g1_walk" / "config.yaml")
-    world = OpenWorld(body)
-    rt = Runtime(world)
-    rig = CameraRig(world.model, width=600, height=420)
+    model, data = build_world(body)
+    cfg = body.cfg["locomotion"]
+    pol = LocomotionPolicy(model, REPO / cfg["policy"], cfg["stand_angles"],
+                           cfg["ctrl_dt"], cfg["action_scale"],
+                           gait_freq=gait_freq)
+    pol.controlled = "leg_waist" if freeze_arms else None
+    rig = CameraRig(model, width=560, height=420)
 
-    state = {"frames": [], "next_t": 0.0, "label": "standing (station keeping)"}
+    pelvis = model.body("pelvis").id
+    lfoot = model.body("left_ankle_roll_link").id
+    shoulder = model.joint("left_shoulder_pitch_joint").qposadr[0]
 
-    def on_frame(t):
-        if t >= state["next_t"]:
-            x, y = rt.base_xy
-            z = world.data.xpos[rt.root_id][2]
-            frame = rig.third_person(world.data, azimuth=138, distance=3.4,
-                                     lookat=(x, y, 0.75), elevation=-14)
-            state["frames"].append(caption(frame, [
-                (state["label"], (120, 220, 255)),
-                (f"base ({x:+.2f}, {y:+.2f}) m   pelvis {z:.2f} m",
-                 (235, 235, 235)),
-            ]))
-            state["next_t"] += 1.0 / RECORD_FPS
+    pol.set_command(0, 0, 0)
+    for _ in range(int(1.5 / model.opt.timestep)):
+        pol.step(data)
+        mujoco.mj_step(model, data)
 
-    rt.on_frame = on_frame
-    rt.step(1.5)
+    frames, lz, pz, sh = [], [], [], []
+    start = data.xpos[pelvis][:2].copy()
+    pol.set_command(speed, 0, 0)
+    next_frame = 0.0
+    for i in range(int(WALK_SECONDS / model.opt.timestep)):
+        pol.step(data)
+        mujoco.mj_step(model, data)
+        lz.append(data.xpos[lfoot][2])
+        pz.append(data.xpos[pelvis][2])
+        sh.append(data.qpos[shoulder])
+        t = i * model.opt.timestep
+        if t >= next_frame:
+            x, y = data.xpos[pelvis][:2]
+            frames.append(rig.third_person(data, azimuth=90, distance=2.5,
+                                           lookat=(x, y, 0.70), elevation=-4))
+            next_frame += 1.0 / RECORD_FPS
 
-    travelled, t0 = 0.0, rt._t
-    prev = rt.base_xy.copy()
-    for (x, y), label in WAYPOINTS:
-        state["label"] = label
-        rt.walk_to(x, y)
-        travelled += float(np.linalg.norm(rt.base_xy - prev))
-        prev = rt.base_xy.copy()
-        err = float(np.linalg.norm(rt.base_xy - np.array([x, y])))
-        print(f"{label:22s} -> base {rt.base_xy.round(2)}  "
-              f"(waypoint error {err:.2f} m), pelvis "
-              f"{world.data.xpos[rt.root_id][2]:.3f} m")
+    lz = np.array(lz)
+    dist = float(np.linalg.norm(data.xpos[pelvis][:2] - start))
+    lifted = lz > lz.min() + 0.03
+    steps = max(1, int(np.sum(np.diff(lifted.astype(int)) == 1)) * 2)
+    m = {"speed": dist / WALK_SECONDS, "cadence": steps / WALK_SECONDS,
+         "stride": dist / steps, "clearance": float(lz.max() - lz.min()),
+         "bob": float(np.ptp(pz)), "arm_swing": float(np.ptp(sh)),
+         "upright": bool(data.xpos[pelvis][2] > 0.6)}
+    deg = chr(176)
+    captioned = [caption(f, [
+        (label, color),
+        (f"{m['speed']:.2f} m/s   {m['cadence']:.1f} steps/s   "
+         f"stride {m['stride']:.2f} m   arm swing "
+         f"{np.degrees(m['arm_swing']):.0f}{deg}", (235, 235, 235)),
+    ]) for f in frames]
+    rig.close()
+    return captioned, m
 
-    state["label"] = "standing (station keeping)"
-    rt.step(2.0)                       # let the hold converge
-    hold_start = rt.base_xy.copy()
-    rt.step(3.0)
-    drift = float(np.linalg.norm(rt.base_xy - hold_start))
-    upright = world.data.xpos[rt.root_id][2] > 0.6
 
+def main() -> None:
+    before, mb = run("BEFORE: default 1.5 Hz gait, arms held still",
+                     1.5, 0.5, True, (255, 170, 120))
+    after, ma = run("AFTER: 1.3 Hz gait, arms free, longer stride",
+                    1.3, 1.0, False, (120, 230, 160))
+
+    n = min(len(before), len(after))
+    combined = before[:n] + after[:n]
     out = REPO / "demos" / "media" / "07_physics_walk.gif"
-    imageio.mimsave(out, state["frames"], fps=PLAY_FPS, loop=0)
-    print(f"\ndistance walked: {travelled:.2f} m in {rt._t - t0:.1f} s "
-          f"({travelled / max(rt._t - t0, 1e-6):.2f} m/s average)")
-    print(f"drift while standing for 3 s: {drift:.3f} m")
-    print(f"upright at the end: {upright}")
-    print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB, "
-          f"{len(state['frames'])} frames)")
+    imageio.mimsave(out, combined, fps=PLAY_FPS, loop=0)
+
+    print(f"{'metric':17} {'before':>8} {'after':>8}   human reference")
+    rows = [("speed m/s", "speed", "1.2-1.4 (0.9-1.2 scaled)"),
+            ("cadence steps/s", "cadence", "1.8-2.0 (2.2-2.5 scaled)"),
+            ("stride m", "stride", "~0.4 x leg length = 0.26"),
+            ("foot clearance m", "clearance", "0.02-0.05"),
+            ("pelvis bob m", "bob", "0.04-0.05"),
+            ("arm swing rad", "arm_swing", "0.4-0.6")]
+    for name, key, ref in rows:
+        print(f"{name:17} {mb[key]:8.2f} {ma[key]:8.2f}   {ref}")
+    print(f"{'upright':17} {str(mb['upright']):>8} {str(ma['upright']):>8}")
+    print(f"\nwrote {out} ({out.stat().st_size / 1e6:.1f} MB, "
+          f"{len(combined)} frames)")
 
 
 if __name__ == "__main__":

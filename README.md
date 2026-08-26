@@ -67,6 +67,32 @@ policy on this body:
   own closed-loop problem, solved by a PI controller on the base pose whose
   integral term learns the creep (`Runtime._hold_station`).
 
+### How human is the gait?
+
+`demos/07_physics_walk.py` walks the same robot twice and measures it. Tuning
+the policy's gait-frequency input and letting it keep its arms roughly doubled
+the stride and the arm swing:
+
+| metric | before | after | human |
+|---|---|---|---|
+| speed (m/s) | 0.52 | 0.89 | 1.2-1.4 (0.9-1.2 Froude-scaled) |
+| cadence (steps/s) | 2.9 | 2.6 | 1.8-2.0 (2.2-2.5 scaled) |
+| stride (m) | 0.18 | 0.35 | ~0.26 for this leg length |
+| foot clearance (m) | 0.08 | 0.08 | 0.02-0.05 |
+| pelvis bob (m) | 0.06 | 0.10 | 0.04-0.05 |
+| arm swing | 6° | 15° | 25-35° |
+
+Cadence is compared after Froude scaling: a 0.65 m leg does not walk at a
+human's 1.9 steps/s. Below 1.2 Hz the policy leaves the distribution it was
+trained in and falls over, so that is the floor.
+
+Stride, cadence and arm swing are now in a human range; **foot clearance,
+pelvis bounce and torso lean are not** — the robot still lifts its feet about
+twice as high as a person and bounces twice as much. Those are properties of
+the policy's learned gait, not parameters, so closing that gap means training
+a policy against human motion capture (AMP / motion-imitation style rewards)
+rather than tuning this one.
+
 ## Honest limitations
 
 - Grasping: both robots' fingers visibly close around objects, but the hold

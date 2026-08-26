@@ -70,7 +70,15 @@ locomotion:
   policy: third_party/policies/g1_policy.onnx
   ctrl_dt: 0.02
   action_scale: 0.5
-  gait_freq: 1.5
+  # Gait tuned against human walking, scaled for this robot's leg length
+  # (Froude scaling: a 0.65 m leg walks at ~2.2-2.5 steps/s, not a human's
+  # 1.9). 1.5 Hz gave a 3.0 steps/s shuffle; below 1.2 Hz the policy leaves
+  # the distribution it was trained in and falls over.
+  gait_freq: 1.3
+  walk_speed: 0.75
+  # The policy also swings the arms, and a walk without arm swing is the
+  # single most robotic-looking thing a humanoid can do, so it keeps them.
+  policy_owns: all
   imu_site: imu_in_pelvis
   # Actuation the policy was trained against (Playground's G1: kp 75/20/2,
   # explicit joint damping and armature, Euler integrator). Menagerie ships
