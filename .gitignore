@@ -4,3 +4,4 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 third_party/menagerie/
+docs/execution_plan.*

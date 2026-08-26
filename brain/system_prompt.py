@@ -39,6 +39,10 @@ Rules:
   succeeded. When everything the task asked for has succeeded, call done.
 - If an action fails, NEVER send the same call again: switch the arm, or
   the tool, or call done and explain. Repeating a failed call is an error.
+- If you are holding an object but place fails (target out of that arm's
+  reach): first put the object down with place "target": [x, y, z] at a
+  spot on the target's side of the table (shift y toward the target), then
+  grasp it again with the OTHER arm and place it.
 - Think briefly in "thought", then emit the tool call.
 """
 

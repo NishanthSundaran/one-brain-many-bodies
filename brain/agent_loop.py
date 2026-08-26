@@ -103,8 +103,21 @@ class Agent:
             args = self._resolve_marker_refs(call.get("args", {}), markers)
 
             # hard loop-breaker: a small model will happily repeat a failing
-            # call forever; refuse to re-execute it and say so, then bail
+            # call forever; refuse to re-execute it and say so, then bail.
+            # Identical *successful* calls (e.g. home spam) are cut off too.
             sig = (call["tool"], json.dumps(args, sort_keys=True))
+            if sig == last_call and last_result is not None \
+                    and last_result.get("ok", False):
+                repeats += 1
+                if repeats >= 3:
+                    entry["result"] = {"ok": False,
+                                       "summary": "aborted: brain repeated "
+                                                  "the same action without "
+                                                  "progress"}
+                    self.transcript.append(entry)
+                    if on_step:
+                        on_step(entry)
+                    break
             if sig == last_call and last_result is not None \
                     and not last_result.get("ok", False):
                 repeats += 1

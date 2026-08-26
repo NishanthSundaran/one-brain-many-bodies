@@ -43,12 +43,39 @@ class Body:
 
         self.spec = mujoco.MjSpec.from_file(str(REPO / cfg["mjcf"]))
 
-        # Capture the home keyframe before editing invalidates it.
-        key = next(k for k in self.spec.keys if k.name == cfg["keyframe"])
-        key_qpos = np.array(key.qpos)
-        key_ctrl = np.array(key.ctrl)
+        # Home pose: from a model keyframe, or spelled out in the config for
+        # models that keep their keyframes elsewhere (e.g. H1's scene.xml).
+        if "keyframe" in cfg:
+            key = next(k for k in self.spec.keys if k.name == cfg["keyframe"])
+            key_qpos = np.array(key.qpos)
+            key_ctrl = np.array(key.ctrl)
+        else:
+            home = cfg["home"]
+            key_qpos = np.concatenate([home["root"], home["joints"]])
+            key_ctrl = np.array(home["joints"], dtype=float)
         for k in list(self.spec.keys):
             self.spec.delete(k)
+
+        # Actuator normalization: every body presents position actuators.
+        # Torque-motor models (H1) get their motors replaced by position
+        # servos so the layers above never see the difference.
+        act_cfg = cfg.get("actuation")
+        if act_cfg is not None:
+            for a in list(self.spec.actuators):
+                self.spec.delete(a)
+            kp, kv = float(act_cfg["kp"]), float(act_cfg["kv"])
+            for j in self.spec.joints:
+                if j.type != mujoco.mjtJoint.mjJNT_HINGE:
+                    continue
+                act = self.spec.add_actuator(
+                    name=j.name, target=j.name,
+                    trntype=mujoco.mjtTrn.mjTRN_JOINT)
+                act.gaintype = mujoco.mjtGain.mjGAIN_FIXED
+                act.gainprm[0] = kp
+                act.biastype = mujoco.mjtBias.mjBIAS_AFFINE
+                act.biasprm[:3] = [0.0, -kp, -kv]
+                act.ctrlrange = j.range
+                act.ctrllimited = True
 
         # v1: fixed base. Drop the free joint and plant the root at its
         # keyframe pose; the remaining qpos layout is the joints only.

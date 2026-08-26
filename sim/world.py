@@ -26,6 +26,9 @@ DEFAULT_OBJECTS = [
 class World:
     def __init__(self, body, objects: list[dict] | None = None):
         self.body = body
+        scene_cfg = body.cfg.get("scene", {})
+        self.table_top = scene_cfg.get("table_top", TABLE_TOP)
+        self.table_x = scene_cfg.get("table_x", TABLE_X)
         spec = body.spec
         w = spec.worldbody
 
@@ -36,14 +39,15 @@ class World:
         w.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE,
                    size=[3, 3, 0.1], rgba=[0.32, 0.36, 0.42, 1])
 
-        leg_h = (TABLE_TOP - 0.04) / 2
+        leg_h = (self.table_top - 0.04) / 2
         w.add_geom(name="table_top", type=mujoco.mjtGeom.mjGEOM_BOX,
-                   size=[0.25, 0.4, 0.02], pos=[TABLE_X, 0, TABLE_TOP - 0.02],
+                   size=[0.25, 0.4, 0.02],
+                   pos=[self.table_x, 0, self.table_top - 0.02],
                    rgba=[0.55, 0.42, 0.28, 1])
         for i, (dx, dy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
             w.add_geom(name=f"table_leg{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
                        size=[0.02, 0.02, leg_h],
-                       pos=[TABLE_X + dx * 0.21, dy * 0.36, leg_h],
+                       pos=[self.table_x + dx * 0.21, dy * 0.36, leg_h],
                        rgba=[0.4, 0.3, 0.2, 1])
 
         self.objects: dict[str, str] = {}  # body name -> display name
@@ -72,7 +76,7 @@ class World:
         x, y = obj["pos"]
         kind, size, rgba = obj["kind"], obj["size"], obj["rgba"]
         if kind == "bin":  # static open container: floor + 4 walls
-            b = w.add_body(name=bname, pos=[x, y, TABLE_TOP])
+            b = w.add_body(name=bname, pos=[x, y, self.table_top])
             sx, sy, sz = size
             t = 0.005
             b.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[sx, sy, t],
@@ -82,7 +86,7 @@ class World:
                 b.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=s, pos=pos, rgba=rgba)
         else:
             half_h = size[-1]
-            b = w.add_body(name=bname, pos=[x, y, TABLE_TOP + half_h + 0.002])
+            b = w.add_body(name=bname, pos=[x, y, self.table_top + half_h + 0.002])
             b.add_freejoint()
             gtype = (mujoco.mjtGeom.mjGEOM_BOX if kind == "box"
                      else mujoco.mjtGeom.mjGEOM_CYLINDER)

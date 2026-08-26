@@ -1,0 +1,47 @@
+# Unitree H1 body definition. Differences from the G1 absorbed here:
+# torque motors (normalized to position servos), 4-DoF wrist-less arms
+# (EE = hand ball on the elbow link), home pose from config (the menagerie
+# H1 keeps its keyframe in scene.xml), and a taller workspace: the H1's
+# shoulders sit at 1.41 m, so its table is higher than the G1's.
+name: h1
+mjcf: third_party/menagerie/unitree_h1/h1.xml
+root_body: pelvis
+
+home:
+  root: [0.0, 0.0, 0.98, 1.0, 0.0, 0.0, 0.0]
+  # model joint order: left leg (5), right leg (5), torso, left arm (4), right arm (4)
+  joints: [0, 0, -0.4, 0.8, -0.4,
+           0, 0, -0.4, 0.8, -0.4,
+           0,
+           0, 0, 0, 0,
+           0, 0, 0, 0]
+
+actuation:      # replace the torque motors with position servos
+  kp: 300
+  kv: 20
+
+arms:
+  left:
+    joints: [left_shoulder_pitch, left_shoulder_roll, left_shoulder_yaw, left_elbow]
+    ee_parent: left_elbow_link
+    ee_offset: [0.28, 0.0, -0.015]   # the hand ball at the forearm tip
+    ready: [-0.6, 0.2, 0.2, 0.6]
+    ready_via: [-0.5, 0.3, 0.0, 1.4]
+  right:
+    joints: [right_shoulder_pitch, right_shoulder_roll, right_shoulder_yaw, right_elbow]
+    ee_parent: right_elbow_link
+    ee_offset: [0.28, 0.0, -0.015]
+    ready: [-0.6, -0.2, -0.2, 0.6]
+    ready_via: [-0.5, -0.3, 0.0, 1.4]
+
+gaze_joint: torso
+
+scene:
+  table_top: 0.95   # matched to the H1's higher workspace
+  table_x: 0.45
+
+head_camera:
+  parent: torso_link
+  pos: [0.07, 0.0, 0.66]   # ~1.64 m world height
+  pitch_down_deg: 45.0
+  fovy: 75.0
