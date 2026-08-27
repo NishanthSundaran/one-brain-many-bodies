@@ -17,16 +17,10 @@ arms:
       - left_wrist_yaw_joint
     ee_parent: left_wrist_yaw_link
     ee_offset: [0.08, 0.0, 0.0]
+    ee_quat: [1.0, 0.0, 0.0, 0.0]
     # elbow-up pre-manipulation pose: well-conditioned Jacobian for servoing
     ready: [-0.9, 0.25, 0.05, 1.0, 0.0, 0.0, 0.0]
-    # canonical palm orientation for tabletop work (world frame, wxyz):
-    # fingers forward, palm down
-    ee_quat: [1.0, 0.0, 0.0, 0.0]
     reach_min_y: -0.05    # short arms: barely crosses the body midline
-    # human-like arm raise: lift sideways with elbow bent, then extend forward
-    ready_via:
-      - [0.0, 1.1, 0.0, 1.6, 0.0, 0.0, 0.0]
-      - [0.0, 1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
     hand:
       link_prefix: left_hand_
       actuators: [left_hand_thumb_0_joint, left_hand_thumb_1_joint,
@@ -46,12 +40,9 @@ arms:
       - right_wrist_yaw_joint
     ee_parent: right_wrist_yaw_link
     ee_offset: [0.08, 0.0, 0.0]
-    ready: [-0.9, -0.25, -0.05, 1.0, 0.0, 0.0, 0.0]
     ee_quat: [1.0, 0.0, 0.0, 0.0]
+    ready: [-0.9, -0.25, -0.05, 1.0, 0.0, 0.0, 0.0]
     reach_max_y: 0.05
-    ready_via:
-      - [0.0, -1.1, 0.0, 1.6, 0.0, 0.0, 0.0]
-      - [0.0, -1.3, 0.0, 0.5, 0.0, 0.0, 0.0]
     hand:
       link_prefix: right_hand_
       actuators: [right_hand_thumb_0_joint, right_hand_thumb_1_joint,
@@ -68,6 +59,9 @@ mobile: true    # floating base, balanced by a learned policy
 locomotion:
   # pretrained MJX/PPO joystick policy (MuJoCo Playground, Apache-2.0)
   policy: third_party/policies/g1_policy.onnx
+  # trained here by training/train_stance.py: holds the pelvis on a
+  # mark while the arms reach, which the walking policy cannot do
+  stance_policy: third_party/policies/g1_stance.pt
   ctrl_dt: 0.02
   action_scale: 0.5
   # Gait tuned against human walking, scaled for this robot's leg length
@@ -111,18 +105,30 @@ locomotion:
   arm_amp: 0.25
 
 scene:
-  # Sized so the robot can work while it balances: a 0.90 m top is above the
-  # pelvis, so the torso clears the edge, and the measured reach at that
-  # height (0.42 m) covers objects sitting near the near edge while the
-  # pelvis keeps the 0.30 m clearance a swaying robot needs.
-  table_top: 0.90
-  table_x: 0.52
-  table_half: [0.22, 0.4]
+  # Sized by training/size_workspace.py in the stance the trained policy
+  # adopts (0.69 m pelvis, shoulder ~0.97 m). The bench sits below shoulder
+  # height so reaching is a natural forward motion rather than a lift above
+  # the shoulder, which pitches the centre of mass and costs the legs their
+  # balance. Narrow, so the robot can stand right up against it.
+  table_top: 0.82
+  table_x: 0.35
+  table_half: [0.10, 0.62]
+  # Objects sit out on the shoulder line (the shoulder is at y = -0.24).
+  # Placed inboard of it, the IK solution rolls the upper arm into the
+  # torso: kinematically valid, physically jammed, and the joint sits
+  # 0.5 rad from its command.
+  # The home bench carries only the bin, on the right arm's shoulder line.
+  # The block to fetch lives on a second bench across the room (added by
+  # demos/08_walk_and_fetch.py), so neither object has to share one arm's
+  # workspace with the other — which is how the bin ended up spawned around
+  # the block and firing it across the floor.
+  # Both on the right arm's side and clear of each other: the arm cannot
+  # cross the body, and a bin spawned around the block fires it off the
+  # bench.
+  # The block sits at the far end of the bench, out of reach from the
+  # robot's start: getting it requires stepping across.
   objects:
-    red block: [0.38, 0.15]
-    green block: [0.37, -0.13]
-    blue cup: [0.44, 0.08]
-    bin: [0.40, -0.24]
+    green block: [0.33, -0.50]
 
 head_camera:
   parent: torso_link      # G1 has no separate head body; head is part of the torso mesh

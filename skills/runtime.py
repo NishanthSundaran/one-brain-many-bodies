@@ -49,6 +49,12 @@ class Runtime:
                     [self.model.actuator(n).id for n in hand["actuators"]])
                 self.arm[side]["hand_open"] = np.asarray(hand["open"], dtype=float)
                 self.arm[side]["hand_closed"] = np.asarray(hand["closed"], dtype=float)
+        # Orientation regulation is gentle on a balancing robot: at full
+        # strength the task saturates its cap every step, eats the whole IK
+        # solution, and the hand rotates instead of reaching.
+        self.rot_gain = ROT_GAIN
+        self.rot_cap = ROT_MAX
+        self.qdot_cap = None
         self.on_frame = None  # callable(t) for demos; None = headless
         self._t = 0.0
         self._held: dict[str, str | None] = {s: None for s in self.arm}
@@ -62,6 +68,9 @@ class Runtime:
         self.loco = None
         self.walk_speed = 0.5
         self.use_plant = False
+        self.arm_stance_gain = 1.0
+        self.stance = None
+        self._standing = False
         self.station = None   # (xy, yaw) the standing controller holds
         self._station_i = np.zeros(2)   # integral state of the station PI
         self._station_bias = np.zeros(2)  # measured hold offset (base frame)
@@ -80,9 +89,25 @@ class Runtime:
                 None if cfg.get("policy_owns") == "all" else "leg_waist")
             self.walk_speed = float(cfg.get("walk_speed", 0.5))
             self.use_plant = bool(cfg.get("plant_to_manipulate", False))
+            self.arm_stance_gain = float(cfg.get("arm_stance_gain", 3.0))
+            self.rot_gain = float(cfg.get("rot_gain", 0.8))
+            self.rot_cap = float(cfg.get("rot_cap", 0.25))
+            self.qdot_cap = float(cfg.get("qdot_cap", 0.35))
+            ck = REPO / cfg.get("stance_policy", "")
+            if cfg.get("stance_policy") and ck.exists():
+                from controllers.stance import StancePolicy
+                self.stance = StancePolicy(self.model, ck, cfg["stand_angles"])
             # hold the start pose: facing +x at the primary table's station
             self.home_station = np.array(self.model.body_pos[self.root_id][:2])
             self.station = (self.home_station.copy(), 0.0)
+            if self.stance is not None:
+                # Stand on the stance policy from the first tick: every second
+                # spent settling under the travelling policy is drift.
+                self.stand_still()
+                self.step(1.5)
+                self._station_bias = np.zeros(2)
+                self._fixed_base_xy = self.base_xy.copy()
+                return
             self.step(3.0)
             # The policy cannot walk backwards against its own creep, so the
             # hold settles a repeatable distance *ahead* of its setpoint.
@@ -93,13 +118,20 @@ class Runtime:
                                            sy * d_world[0] + cy * d_world[1]])
             self.station = (self.home_station.copy(), 0.0)
             self.step(2.0)
+            # Standing is the stance policy's job, not the travelling
+            # policy's: it holds the mark to millimetres, where the walking
+            # policy settles a variable 0.2-0.45 m ahead of its setpoint.
+            if self.stance is not None:
+                self.stand_still()
         self._fixed_base_xy = np.array(self.model.body_pos[self.root_id][:2])
 
     # ---------------- core stepping ----------------
 
     def step(self, seconds: float) -> None:
         for _ in range(int(round(seconds / self.dt))):
-            if self.loco is not None and not self._planted:
+            if self._standing and self.stance is not None:
+                self.stance.step(self.data)
+            elif self.loco is not None and not self._planted:
                 self._hold_station()
                 self.loco.step(self.data)
             mujoco.mj_step(self.model, self.data)
@@ -221,6 +253,63 @@ class Runtime:
                     touching.add(b)
         return len(touching) == 2
 
+    def step_to(self, xy, yaw: float | None = None, tol: float = 0.05,
+                stride: float = 0.18, max_steps: int = 8) -> bool:
+        """Fine positioning: shuffle to a spot using the stance policy.
+
+        The walking policy travels but cannot stop accurately (it lands
+        within a few tenths of a metre). The stance policy was trained to
+        return to its hold point when pushed off it, which makes it a
+        precise short-range positioner: move its hold point a stride at a
+        time and it walks the base there and holds, to within a couple of
+        centimetres. Coarse travel and fine placement, each by the controller
+        that is good at it.
+        """
+        if self.stance is None:
+            return False
+        self.stand_still()
+        target = np.asarray(xy, dtype=float)[:2]
+        yaw = self.base_yaw if yaw is None else yaw
+        for _ in range(max_steps):
+            err = target - self.base_xy
+            dist = float(np.linalg.norm(err))
+            # Keep the heading fixed while translating. Turning is what
+            # costs this policy its balance; it can side-step and back up
+            # perfectly well without it.
+            yaw_err = self._wrap(yaw - self.base_yaw)
+            if dist < tol and abs(yaw_err) < 0.08:
+                return True
+            step = err if dist <= stride else err / dist * stride
+            self.stance.hold(self.base_xy + step,
+                             self.base_yaw + float(np.clip(yaw_err, -0.3, 0.3)))
+            self.step(2.5)
+        return bool(np.linalg.norm(target - self.base_xy) < tol * 2.5)
+
+    def approach_object(self, world_pos, forward: float = 0.32,
+                        band=(0.18, 0.46), tries: int = 2) -> bool:
+        """Get the target into the arm's envelope before reaching for it.
+
+        Walking stops within a few decimetres of where it was aimed, which is
+        the difference between reachable and not. So after arriving: stand,
+        look at where the target actually is, and if it is outside the band,
+        walk a short correction and stand again.
+        """
+        if self.loco is None:
+            return True
+        for _ in range(tries):
+            self.stand_still()
+            local = self.to_base(world_pos)
+            if band[0] <= local[0] <= band[1] and abs(local[1]) <= 0.30:
+                return True
+            yaw = self.base_yaw
+            side = float(np.clip(local[1], -0.20, 0.20))
+            offset = np.array([np.cos(yaw) * forward - np.sin(yaw) * side,
+                               np.sin(yaw) * forward + np.cos(yaw) * side])
+            self.step_to(np.asarray(world_pos)[:2] - offset, yaw)
+        self.stand_still()
+        local = self.to_base(world_pos)
+        return bool(band[0] <= local[0] <= band[1])
+
     def reposition_for(self, world_pos, forward: float = 0.30,
                        band=(0.22, 0.38)) -> bool:
         """Walking robots do not stop on a mark: the policy leaves the base a
@@ -241,6 +330,39 @@ class Runtime:
         self.walk_to(*(np.asarray(world_pos)[:2] - offset), face=world_pos[:2])
         self.plant()
         return True
+
+    def _set_arm_gain(self, scale: float) -> None:
+        """The locomotion policy is trained on soft actuators (kp 75) and its
+        gains are applied to every joint it owns, arms included. That is far
+        too soft for an arm to hold a hand where the IK puts it — it simply
+        droops backwards under gravity — so the arms stiffen while the robot
+        manipulates and relax again before it walks."""
+        for side in self.arm:
+            for act in self.arm[side]["act"]:
+                kp = self._nominal_gain[act] * scale
+                self.model.actuator_gainprm[act, 0] = kp
+                self.model.actuator_biasprm[act, 1] = -kp
+
+    def stand_still(self) -> None:
+        """Hand the legs to the stance policy: it holds the pelvis on its
+        mark while the arms work, which the travelling policy cannot do."""
+        if self.stance is None or self._standing:
+            return
+        self._set_arm_gain(self.arm_stance_gain)
+        self.stance.hold(self.base_xy, self.base_yaw)
+        self.stance.last_action[:] = 0.0
+        self._standing = True
+        self.station = None
+        self.step(0.5)
+
+    def walk_again(self) -> None:
+        if not self._standing:
+            return
+        self._set_arm_gain(1.0)
+        self._standing = False
+        self._station_i[:] = 0.0
+        self.station = (self.base_xy.copy(), self.base_yaw)
+        self.step(0.3)
 
     def plant(self, stiffness: float = 6.0,
               damping_ratio: float = 0.08) -> None:
@@ -335,7 +457,7 @@ class Runtime:
         return np.linalg.norm(np.asarray(xy) - self.base_xy) < tol * 2.0
 
     def walk_to(self, x: float, y: float, face=None, speed: float = None,
-                tol: float = 0.12, timeout: float = 45.0) -> bool:
+                tol: float = 0.30, timeout: float = 45.0) -> bool:
         """Walk to (x, y) under the locomotion policy.
 
         A unicycle pursuit controller: always walk forwards, steering with
@@ -348,8 +470,24 @@ class Runtime:
             raise RuntimeError("this body has no locomotion policy")
         target = np.array([x, y], dtype=float)
         speed = self.walk_speed if speed is None else speed
+        if self.stance is not None:
+            # Navigate with the stance policy, a stride at a time. The
+            # travelling policy has the better gait (demos/07) but cannot be
+            # steered to a spot: commanded to a target it orbits it and
+            # eventually falls, landing a metre or two out. Stepping is
+            # slower and lands within a few centimetres, and precision is
+            # what deciding to reach for something needs.
+            face_yaw = None
+            if face is not None:
+                fd = np.asarray(face, dtype=float)[:2] - target
+                face_yaw = float(np.arctan2(fd[1], fd[0]))
+            return self.step_to(target, face_yaw, tol=0.08,
+                                max_steps=int(6 + 6 * np.linalg.norm(
+                                    target - self.base_xy)))
         self.home()
         self.unplant()
+        self.walk_again()   # the stance policy holds position: hand the legs
+                            # back to the walking policy before asking it to go
         self.station = None          # pursuit owns the commands while walking
 
         t_end = self._t + timeout
@@ -371,7 +509,9 @@ class Runtime:
             # without creeping away. Keeping it walking turns the correction
             # into an arc — which is how people walk round corners anyway.
             vx = speed * float(np.clip(np.cos(bearing), 0.12, 1.0))
-            vx *= float(np.clip(dist / 0.5, 0.35, 1.0))   # ease off at the end
+            # Ease all the way to zero. A floor on the terminal speed means
+            # the robot can never stop, so it orbits the target instead.
+            vx *= float(np.clip(dist / 0.6, 0.0, 1.0))
             self.loco.set_command(vx, 0.0, wz)
             self.step(self.dt)
 
@@ -386,8 +526,9 @@ class Runtime:
         # backwards over the last half metre topples it. The cost is honest
         # stopping accuracy of a few decimetres, which is what a velocity-
         # commanded policy without a footstep planner gives you.
-        self._goto(self.base_xy.copy(), final_yaw, 0.30, 0.12, 8.0, 0.3)
+        # Coarse travel is done; the stance policy places the base exactly.
         self.station = (self.base_xy.copy(), final_yaw)
+        self.step_to(target, final_yaw)
         self._station_i[:] = 0.0
         self.step(1.0)
         return bool(np.linalg.norm(target - self.base_xy) < tol * 3.0)
@@ -405,9 +546,80 @@ class Runtime:
         R_cur = self.data.site_xmat[self.ik[side].site_id].reshape(3, 3)
         R_des = (Rotation.from_euler("z", self.base_yaw).as_matrix()
                  @ Rotation.from_quat(np.roll(quat, -1)).as_matrix())
-        w = ROT_GAIN * Rotation.from_matrix(R_des @ R_cur.T).as_rotvec()
+        w = self.rot_gain * Rotation.from_matrix(R_des @ R_cur.T).as_rotvec()
+        cap = self.rot_cap
         n = np.linalg.norm(w)
-        return w * (ROT_MAX / n) if n > ROT_MAX else w
+        return w * (cap / n) if n > cap else w
+
+    def reach_joint_space(self, side: str, target, duration: float = 2.5,
+                          tol: float = 0.04, seed: str = "ready",
+                          passes: int = 3) -> bool:
+        """Reach by solving the IK offline, then moving the arm smoothly in
+        joint space.
+
+        A balancing robot tolerates a smooth arm motion (3 cm of base drift
+        here) but not a closed-loop Cartesian servo: the servo re-plans every
+        tick, so the legs feel a jerky, direction-changing disturbance that
+        never settles, and the robot goes down. Solving first and then moving
+        once gives the same hand pose with a disturbance the stance policy
+        was trained to absorb.
+        """
+        a, ik = self.arm[side], self.ik[side]
+        target = np.asarray(target, dtype=float)
+        # Bias the solve towards the arm's natural working pose. Without it
+        # the IK is free to wander into contorted answers — elbow
+        # hyperextended, wrist pinned against its limit, wrist links in
+        # collision — which are kinematically valid and physically jammed:
+        # the joint sits half a radian from its command and the hand never
+        # arrives.
+        posture = self.body.cfg["arms"][side].get("ready")
+        posture = np.asarray(posture, dtype=float) if posture else None
+        snapshot = self.data.qpos.copy()
+        # A descent should start from where the arm already is — reseeding
+        # from the ready pose finds a different solution branch and the arm
+        # swings across the bench to get to it.
+        if seed == "current":
+            posture = self.data.qpos[a["qpos"]].copy()
+        if posture is not None:
+            # Seed every solve from the same natural pose. Seeding from
+            # wherever the arm happens to be lets one contorted answer feed
+            # the next, and the solutions drift further from anything the
+            # arm can actually hold.
+            self.data.qpos[a["qpos"]] = posture
+            mujoco.mj_forward(self.model, self.data)
+        for _ in range(600):          # kinematic solve, physics untouched
+            err = target - self.data.site_xpos[ik.site_id]
+            if np.linalg.norm(err) < 0.008:
+                break
+            qd = ik.solve(self.data, np.r_[3.0 * err, np.zeros(3)],
+                          posture=posture, posture_gain=1.2)
+            self.data.qpos[a["qpos"]] = np.clip(
+                self.data.qpos[a["qpos"]] + qd * 0.01,
+                a["limits"][:, 0], a["limits"][:, 1])
+            mujoco.mj_forward(self.model, self.data)
+        solution = self.data.qpos[a["qpos"]].copy()
+        reached = float(np.linalg.norm(
+            target - self.data.site_xpos[ik.site_id]))
+        self.data.qpos[:] = snapshot
+        mujoco.mj_forward(self.model, self.data)
+        if reached > tol:
+            return False
+        # Pace the move by how far the arm has to travel: a fixed duration
+        # makes a large joint change a fast one, and speed is what the legs
+        # feel.
+        travel = float(np.max(np.abs(solution - self.data.qpos[a["qpos"]])))
+        self._interp_ctrl(side, solution, max(duration, 2.0 * travel))
+        self.step(0.3)
+        err = float(np.linalg.norm(target - self.ee_pos(side)))
+        if err < tol * 2.5 or passes <= 1:
+            return bool(err < tol * 2.5)
+        # The solve happened before the move: the base is balancing, so it
+        # shifts and turns while the arm travels and the joint solution no
+        # longer points where it did. Re-solve from where the robot is now
+        # and close the gap — each correction is small, so it costs the legs
+        # almost nothing.
+        return self.reach_joint_space(side, target, duration=1.0, tol=tol,
+                                      seed="current", passes=passes - 1)
 
     def servo_ee(self, side: str, target, speed: float = 0.12,
                  tol: float = 0.02, timeout: float = 5.0) -> bool:
@@ -434,6 +646,10 @@ class Runtime:
             qdot = self.ik[side].solve(
                 self.data, np.r_[v_cmd, self._orientation_twist(side)])
             qdot *= joint_limit_scale(self.data.qpos[a["qpos"]], a["limits"])
+            if self.qdot_cap is not None:   # limit the disturbance the legs feel
+                n = np.linalg.norm(qdot)
+                if n > self.qdot_cap:
+                    qdot *= self.qdot_cap / n
             q = self.data.qpos[a["qpos"]]
             # anti-windup: the position target may never drift far from the
             # actual joints, or a blocked arm winds up and shoves through

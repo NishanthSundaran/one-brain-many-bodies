@@ -30,6 +30,7 @@
 | 4 | Local VLM brain executes a typed command | ✅ `demos/05_vlm_brain.py` |
 | 5 | **Same brain, two bodies: G1 and H1 side by side** | ✅ `demos/06_cross_embodiment.py` |
 | 6 | **Physics-based walking** (learned policy, real balance) | ✅ `demos/07_physics_walk.py` |
+| 6b | **Walk over and fetch it, balancing throughout** | ✅ `demos/08_walk_and_fetch.py` |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |
 
 ## Setup
@@ -66,6 +67,41 @@ policy on this body:
   it still creeps forward at ~0.25 m/s. Standing on a spot is therefore its
   own closed-loop problem, solved by a PI controller on the base pose whose
   integral term learns the creep (`Runtime._hold_station`).
+
+### Standing still is its own skill
+
+The borrowed walking policy cannot manipulate: told to hold position it
+creeps forward at ~0.25 m/s, wanders in a ±0.2 m band, and treats a sustained
+arm reach as something to step away from — it falls, every time. Freezing the
+legs is worse, because a frozen robot cannot absorb the momentum of its own
+arm.
+
+So `training/train_stance.py` trains one. The arms are the *environment*: on
+every episode they are driven through the poses a real reach visits, and the
+policy (legs and waist, 15 DoF) is rewarded for keeping the pelvis on its
+mark. PPO on CPU, ~3,300 control-steps/s across 14 workers — about half an
+hour per run on a laptop, no GPU involved.
+
+| | walking policy | trained stance policy |
+|---|---|---|
+| hold a mark, idle | ±0.2 m | **1.4 cm** |
+| hold through a full arm reach | falls | **3 cm**, stays upright |
+| heading drift | uncontrolled | **2°** |
+| place the base on a spot | 0.2-2 m out | **2-4 cm** |
+
+Three lessons cost real time and are worth stating plainly:
+
+- **A reward that saturates teaches nothing.** The first drift term was
+  `exp(-(drift/0.05)^2)`, which is numerically zero past 0.1 m, so a policy
+  sitting at 0.3 m got no gradient telling it 0.15 m was better. It plateaued
+  for 2M steps. A linear term alongside the Gaussian fixed it.
+- **Train on the poses you will actually use.** Sampling arm disturbances
+  symmetrically around the arms' resting pose covered ±1.1 rad of shoulder
+  pitch; a real reach goes to -1.2. The policy balanced against everything it
+  had seen and fell the moment the arm went somewhere new.
+- **Position is not enough — hold the heading too.** With no yaw term the
+  robot slowly turned on the spot, which puts the bench where its arms are
+  not, and is exactly as fatal to a reach as drifting away from it.
 
 ### How human is the gait?
 

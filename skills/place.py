@@ -17,7 +17,7 @@ SCHEMA = {
 
 HOVER = 0.10
 DROP = 0.07
-DROP_CONTAINER = 0.13   # release above a container's rim, not inside it
+DROP_CONTAINER = 0.07   # just over the rim: dropped from higher it bounces out
 RETRACT = 0.15
 
 
@@ -88,9 +88,17 @@ def run(rt, world, target, arm=None):
     hover_h = drop + 0.05
     # safe-height waypoint: travel above tabletop clutter, then descend
     patience = 16.0 if rt.loco is not None else 4.0
-    rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
-                speed=0.18, tol=0.05, timeout=patience)
-    if not rt.servo_ee(arm, tpos + [0, 0, hover_h], timeout=patience):
+    balancing = rt.loco is not None
+    if balancing:
+        # Same reason as grasp: solve and move once, rather than running a
+        # Cartesian servo whose constant re-planning is a disturbance the
+        # legs cannot settle against.
+        ok = rt.reach_joint_space(arm, tpos + [0, 0, hover_h])
+    else:
+        rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
+                    speed=0.18, tol=0.05, timeout=patience)
+        ok = rt.servo_ee(arm, tpos + [0, 0, hover_h], timeout=patience)
+    if not ok:
         # graceful degradation: don't strand the object in a stuck hand.
         # Set it down at a neutral mid-table spot both arms can reach and
         # tell the brain the single next step that finishes the job.
@@ -108,11 +116,19 @@ def run(rt, world, target, arm=None):
                 "error": f"target out of reach for the {arm} arm; "
                          f"{held_name} was set down at {set_down}. "
                          f"Grasp it with the other arm and place it."}
-    rt.servo_ee(arm, tpos + [0, 0, drop], speed=0.08)
+    if balancing:
+        rt.reach_joint_space(arm, tpos + [0, 0, drop], duration=1.2,
+                             seed="current")
+    else:
+        rt.servo_ee(arm, tpos + [0, 0, drop], speed=0.08)
     rt.set_hand(arm, "open")
     rt.release(arm)
     rt.step(0.4)  # let it settle
-    rt.servo_ee(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
+    if balancing:
+        rt.reach_joint_space(arm, rt.ee_pos(arm) + [0, 0, RETRACT],
+                             duration=1.2, seed="current")
+    else:
+        rt.servo_ee(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
     result = {"ok": True, "arm": arm, "placed": held_name}
     if note:
         result["note"] = note

@@ -41,7 +41,15 @@ def run(rt, world, target):
         return {"ok": True, "note": "already standing there"}
 
     rt.home()      # arms down before walking
-    rt.unplant()   # hand the legs back to the walking policy
-    rt.walk_to(table["station"][0], table["station"][1], face=table["xy"])
-    return {"ok": True, "standing_at": np.round(table["station"], 2).tolist(),
+    rt.unplant()      # hand the legs back to the walking policy
+    rt.walk_again()
+    arrived = rt.walk_to(table["station"][0], table["station"][1],
+                         face=table["xy"])
+    upright = bool(rt.data.xpos[rt.root_id][2] > 0.55)
+    if not (arrived and upright):
+        return {"ok": False, "arm": None,
+                "error": ("fell while walking" if not upright else
+                          "could not reach the station"),
+                "stopped_at": np.round(rt.base_xy, 2).tolist()}
+    return {"ok": True, "standing_at": np.round(rt.base_xy, 2).tolist(),
             "facing": str(target)}

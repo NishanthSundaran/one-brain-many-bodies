@@ -1,0 +1,424 @@
+obs 84  act 15  workers 14  iters 3500
+iter    0 | steps  0.00M | return    106.6 | fall rate 1.00 | drift 0.496 m |     2s
+iter   10 | steps  0.02M | return    118.2 | fall rate 1.00 | drift 0.515 m |     7s
+iter   20 | steps  0.04M | return    121.9 | fall rate 1.00 | drift 0.502 m |    12s
+iter   30 | steps  0.06M | return    130.0 | fall rate 1.00 | drift 0.512 m |    18s
+iter   40 | steps  0.07M | return    133.2 | fall rate 1.00 | drift 0.484 m |    23s
+iter   50 | steps  0.09M | return    139.1 | fall rate 1.00 | drift 0.501 m |    29s
+iter   60 | steps  0.11M | return    147.6 | fall rate 1.00 | drift 0.519 m |    34s
+iter   70 | steps  0.13M | return    141.7 | fall rate 1.00 | drift 0.510 m |    40s
+iter   80 | steps  0.15M | return    158.4 | fall rate 1.00 | drift 0.512 m |    45s
+iter   90 | steps  0.16M | return    157.8 | fall rate 1.00 | drift 0.520 m |    51s
+iter  100 | steps  0.18M | return    153.2 | fall rate 1.00 | drift 0.519 m |    57s
+iter  110 | steps  0.20M | return    151.1 | fall rate 1.00 | drift 0.495 m |    62s
+iter  120 | steps  0.22M | return    160.9 | fall rate 1.00 | drift 0.491 m |    68s
+iter  130 | steps  0.23M | return    166.5 | fall rate 1.00 | drift 0.480 m |    73s
+iter  140 | steps  0.25M | return    174.4 | fall rate 1.00 | drift 0.460 m |    79s
+iter  150 | steps  0.27M | return    157.9 | fall rate 1.00 | drift 0.472 m |    85s
+iter  160 | steps  0.29M | return    164.4 | fall rate 1.00 | drift 0.465 m |    90s
+iter  170 | steps  0.31M | return    176.0 | fall rate 1.00 | drift 0.455 m |    96s
+iter  180 | steps  0.32M | return    175.3 | fall rate 1.00 | drift 0.458 m |   102s
+iter  190 | steps  0.34M | return    195.3 | fall rate 1.00 | drift 0.470 m |   108s
+iter  200 | steps  0.36M | return    201.0 | fall rate 1.00 | drift 0.455 m |   113s
+iter  210 | steps  0.38M | return    177.3 | fall rate 1.00 | drift 0.476 m |   119s
+iter  220 | steps  0.40M | return    199.0 | fall rate 1.00 | drift 0.461 m |   125s
+iter  230 | steps  0.41M | return    189.4 | fall rate 1.00 | drift 0.481 m |   131s
+iter  240 | steps  0.43M | return    216.2 | fall rate 1.00 | drift 0.468 m |   137s
+iter  250 | steps  0.45M | return    198.6 | fall rate 1.00 | drift 0.477 m |   142s
+iter  260 | steps  0.47M | return    213.1 | fall rate 1.00 | drift 0.442 m |   148s
+iter  270 | steps  0.49M | return    203.5 | fall rate 1.00 | drift 0.463 m |   154s
+iter  280 | steps  0.50M | return    236.5 | fall rate 1.00 | drift 0.443 m |   160s
+iter  290 | steps  0.52M | return    224.4 | fall rate 1.00 | drift 0.461 m |   166s
+iter  300 | steps  0.54M | return    225.2 | fall rate 1.00 | drift 0.456 m |   172s
+iter  310 | steps  0.56M | return    245.9 | fall rate 1.00 | drift 0.461 m |   178s
+iter  320 | steps  0.58M | return    226.7 | fall rate 1.00 | drift 0.470 m |   185s
+iter  330 | steps  0.59M | return    267.9 | fall rate 1.00 | drift 0.470 m |   191s
+iter  340 | steps  0.61M | return    270.0 | fall rate 1.00 | drift 0.487 m |   196s
+iter  350 | steps  0.63M | return    257.3 | fall rate 1.00 | drift 0.477 m |   203s
+iter  360 | steps  0.65M | return    280.0 | fall rate 1.00 | drift 0.429 m |   209s
+iter  370 | steps  0.66M | return    270.1 | fall rate 1.00 | drift 0.457 m |   215s
+iter  380 | steps  0.68M | return    295.1 | fall rate 1.00 | drift 0.480 m |   221s
+iter  390 | steps  0.70M | return    347.8 | fall rate 1.00 | drift 0.482 m |   230s
+iter  400 | steps  0.72M | return    341.8 | fall rate 1.00 | drift 0.477 m |   238s
+iter  410 | steps  0.74M | return    353.7 | fall rate 1.00 | drift 0.479 m |   244s
+iter  420 | steps  0.75M | return    345.3 | fall rate 0.97 | drift 0.490 m |   250s
+iter  430 | steps  0.77M | return    380.3 | fall rate 1.00 | drift 0.494 m |   256s
+iter  440 | steps  0.79M | return    393.2 | fall rate 0.97 | drift 0.484 m |   262s
+iter  450 | steps  0.81M | return    419.0 | fall rate 0.97 | drift 0.445 m |   268s
+iter  460 | steps  0.83M | return    423.6 | fall rate 0.95 | drift 0.454 m |   277s
+iter  470 | steps  0.84M | return    452.3 | fall rate 0.95 | drift 0.470 m |   284s
+iter  480 | steps  0.86M | return    371.3 | fall rate 1.00 | drift 0.483 m |   290s
+iter  490 | steps  0.88M | return    490.4 | fall rate 0.93 | drift 0.442 m |   296s
+iter  500 | steps  0.90M | return    444.5 | fall rate 0.95 | drift 0.471 m |   302s
+iter  510 | steps  0.92M | return    482.4 | fall rate 0.90 | drift 0.438 m |   308s
+iter  520 | steps  0.93M | return    460.1 | fall rate 0.97 | drift 0.465 m |   314s
+iter  530 | steps  0.95M | return    535.5 | fall rate 0.82 | drift 0.410 m |   323s
+iter  540 | steps  0.97M | return    551.9 | fall rate 0.78 | drift 0.382 m |   331s
+iter  550 | steps  0.99M | return    519.1 | fall rate 0.85 | drift 0.418 m |   337s
+iter  560 | steps  1.01M | return    596.1 | fall rate 0.72 | drift 0.368 m |   343s
+iter  570 | steps  1.02M | return    509.2 | fall rate 0.88 | drift 0.430 m |   349s
+iter  580 | steps  1.04M | return    603.8 | fall rate 0.68 | drift 0.321 m |   355s
+iter  590 | steps  1.06M | return    585.2 | fall rate 0.82 | drift 0.381 m |   361s
+iter  600 | steps  1.08M | return    586.7 | fall rate 0.70 | drift 0.363 m |   367s
+iter  610 | steps  1.09M | return    595.3 | fall rate 0.75 | drift 0.346 m |   373s
+iter  620 | steps  1.11M | return    503.3 | fall rate 0.85 | drift 0.434 m |   380s
+iter  630 | steps  1.13M | return    518.2 | fall rate 0.82 | drift 0.382 m |   386s
+iter  640 | steps  1.15M | return    643.3 | fall rate 0.68 | drift 0.344 m |   392s
+iter  650 | steps  1.17M | return    532.3 | fall rate 0.80 | drift 0.386 m |   398s
+iter  660 | steps  1.18M | return    554.8 | fall rate 0.82 | drift 0.395 m |   403s
+iter  670 | steps  1.20M | return    551.8 | fall rate 0.75 | drift 0.386 m |   410s
+iter  680 | steps  1.22M | return    584.0 | fall rate 0.80 | drift 0.401 m |   416s
+iter  690 | steps  1.24M | return    649.8 | fall rate 0.68 | drift 0.345 m |   422s
+iter  700 | steps  1.26M | return    477.2 | fall rate 0.95 | drift 0.461 m |   427s
+iter  710 | steps  1.27M | return    640.6 | fall rate 0.65 | drift 0.339 m |   433s
+iter  720 | steps  1.29M | return    644.9 | fall rate 0.68 | drift 0.346 m |   439s
+iter  730 | steps  1.31M | return    565.1 | fall rate 0.72 | drift 0.372 m |   445s
+iter  740 | steps  1.33M | return    584.4 | fall rate 0.70 | drift 0.370 m |   451s
+iter  750 | steps  1.35M | return    551.3 | fall rate 0.68 | drift 0.338 m |   457s
+iter  760 | steps  1.36M | return    554.4 | fall rate 0.78 | drift 0.381 m |   462s
+iter  770 | steps  1.38M | return    592.6 | fall rate 0.68 | drift 0.343 m |   468s
+iter  780 | steps  1.40M | return    535.7 | fall rate 0.78 | drift 0.369 m |   474s
+iter  790 | steps  1.42M | return    585.2 | fall rate 0.80 | drift 0.373 m |   480s
+iter  800 | steps  1.44M | return    638.0 | fall rate 0.68 | drift 0.348 m |   486s
+iter  810 | steps  1.45M | return    582.9 | fall rate 0.70 | drift 0.321 m |   492s
+iter  820 | steps  1.47M | return    574.4 | fall rate 0.72 | drift 0.349 m |   498s
+iter  830 | steps  1.49M | return    660.8 | fall rate 0.62 | drift 0.304 m |   504s
+iter  840 | steps  1.51M | return    625.6 | fall rate 0.70 | drift 0.323 m |   509s
+iter  850 | steps  1.52M | return    625.5 | fall rate 0.55 | drift 0.258 m |   515s
+iter  860 | steps  1.54M | return    602.6 | fall rate 0.72 | drift 0.330 m |   521s
+iter  870 | steps  1.56M | return    594.5 | fall rate 0.75 | drift 0.331 m |   527s
+iter  880 | steps  1.58M | return    562.7 | fall rate 0.70 | drift 0.319 m |   533s
+iter  890 | steps  1.60M | return    561.7 | fall rate 0.78 | drift 0.353 m |   539s
+iter  900 | steps  1.61M | return    556.4 | fall rate 0.78 | drift 0.369 m |   545s
+iter  910 | steps  1.63M | return    560.6 | fall rate 0.75 | drift 0.350 m |   551s
+iter  920 | steps  1.65M | return    605.4 | fall rate 0.65 | drift 0.297 m |   557s
+iter  930 | steps  1.67M | return    640.0 | fall rate 0.53 | drift 0.249 m |   562s
+iter  940 | steps  1.69M | return    623.8 | fall rate 0.60 | drift 0.277 m |   568s
+iter  950 | steps  1.70M | return    806.4 | fall rate 0.38 | drift 0.184 m |   574s
+iter  960 | steps  1.72M | return    772.8 | fall rate 0.38 | drift 0.184 m |   580s
+iter  970 | steps  1.74M | return    801.9 | fall rate 0.40 | drift 0.175 m |   586s
+iter  980 | steps  1.76M | return    701.9 | fall rate 0.55 | drift 0.254 m |   592s
+iter  990 | steps  1.78M | return    726.5 | fall rate 0.45 | drift 0.218 m |   598s
+iter 1000 | steps  1.79M | return    730.0 | fall rate 0.45 | drift 0.216 m |   604s
+iter 1010 | steps  1.81M | return    723.1 | fall rate 0.47 | drift 0.229 m |   610s
+iter 1020 | steps  1.83M | return    717.7 | fall rate 0.45 | drift 0.227 m |   616s
+iter 1030 | steps  1.85M | return    819.6 | fall rate 0.30 | drift 0.168 m |   621s
+iter 1040 | steps  1.87M | return    757.7 | fall rate 0.53 | drift 0.234 m |   627s
+iter 1050 | steps  1.88M | return    759.4 | fall rate 0.50 | drift 0.237 m |   633s
+iter 1060 | steps  1.90M | return    695.2 | fall rate 0.65 | drift 0.290 m |   639s
+iter 1070 | steps  1.92M | return    731.5 | fall rate 0.47 | drift 0.205 m |   645s
+iter 1080 | steps  1.94M | return    671.8 | fall rate 0.62 | drift 0.273 m |   652s
+iter 1090 | steps  1.96M | return    790.7 | fall rate 0.47 | drift 0.216 m |   661s
+iter 1100 | steps  1.97M | return    782.1 | fall rate 0.50 | drift 0.223 m |   669s
+iter 1110 | steps  1.99M | return    679.5 | fall rate 0.62 | drift 0.263 m |   675s
+iter 1120 | steps  2.01M | return    741.9 | fall rate 0.57 | drift 0.254 m |   681s
+iter 1130 | steps  2.03M | return    739.4 | fall rate 0.57 | drift 0.286 m |   687s
+iter 1140 | steps  2.04M | return    697.8 | fall rate 0.62 | drift 0.257 m |   693s
+iter 1150 | steps  2.06M | return    694.9 | fall rate 0.62 | drift 0.279 m |   703s
+iter 1160 | steps  2.08M | return    529.0 | fall rate 0.85 | drift 0.364 m |   710s
+iter 1170 | steps  2.10M | return    678.8 | fall rate 0.60 | drift 0.265 m |   716s
+iter 1180 | steps  2.12M | return    772.4 | fall rate 0.57 | drift 0.239 m |   722s
+iter 1190 | steps  2.13M | return    762.0 | fall rate 0.50 | drift 0.217 m |   728s
+iter 1200 | steps  2.15M | return    755.6 | fall rate 0.50 | drift 0.216 m |   737s
+iter 1210 | steps  2.17M | return    771.9 | fall rate 0.45 | drift 0.209 m |   745s
+iter 1220 | steps  2.19M | return    747.2 | fall rate 0.45 | drift 0.207 m |   751s
+iter 1230 | steps  2.21M | return    853.3 | fall rate 0.30 | drift 0.143 m |   757s
+iter 1240 | steps  2.22M | return    630.4 | fall rate 0.65 | drift 0.250 m |   763s
+iter 1250 | steps  2.24M | return    694.3 | fall rate 0.55 | drift 0.223 m |   769s
+iter 1260 | steps  2.26M | return    758.5 | fall rate 0.47 | drift 0.220 m |   776s
+iter 1270 | steps  2.28M | return    792.1 | fall rate 0.42 | drift 0.188 m |   782s
+iter 1280 | steps  2.30M | return    735.1 | fall rate 0.60 | drift 0.267 m |   788s
+iter 1290 | steps  2.31M | return    725.0 | fall rate 0.50 | drift 0.229 m |   794s
+iter 1300 | steps  2.33M | return    763.6 | fall rate 0.42 | drift 0.230 m |   800s
+iter 1310 | steps  2.35M | return    754.3 | fall rate 0.57 | drift 0.283 m |   806s
+iter 1320 | steps  2.37M | return    776.6 | fall rate 0.53 | drift 0.266 m |   812s
+iter 1330 | steps  2.39M | return    782.2 | fall rate 0.55 | drift 0.271 m |   818s
+iter 1340 | steps  2.40M | return    865.8 | fall rate 0.33 | drift 0.182 m |   824s
+iter 1350 | steps  2.42M | return    821.3 | fall rate 0.42 | drift 0.192 m |   834s
+iter 1360 | steps  2.44M | return    812.1 | fall rate 0.38 | drift 0.193 m |   843s
+iter 1370 | steps  2.46M | return    740.6 | fall rate 0.45 | drift 0.223 m |   853s
+iter 1380 | steps  2.47M | return    865.7 | fall rate 0.35 | drift 0.170 m |   863s
+iter 1390 | steps  2.49M | return    804.8 | fall rate 0.40 | drift 0.187 m |   872s
+iter 1400 | steps  2.51M | return    831.2 | fall rate 0.40 | drift 0.191 m |   878s
+iter 1410 | steps  2.53M | return    828.1 | fall rate 0.42 | drift 0.209 m |   884s
+iter 1420 | steps  2.55M | return    790.4 | fall rate 0.38 | drift 0.176 m |   891s
+iter 1430 | steps  2.56M | return    724.9 | fall rate 0.47 | drift 0.243 m |   897s
+iter 1440 | steps  2.58M | return    757.0 | fall rate 0.47 | drift 0.239 m |   903s
+iter 1450 | steps  2.60M | return    841.0 | fall rate 0.40 | drift 0.203 m |   909s
+iter 1460 | steps  2.62M | return    838.5 | fall rate 0.47 | drift 0.220 m |   915s
+iter 1470 | steps  2.64M | return    806.3 | fall rate 0.42 | drift 0.208 m |   921s
+iter 1480 | steps  2.65M | return    741.6 | fall rate 0.50 | drift 0.256 m |   927s
+iter 1490 | steps  2.67M | return    852.7 | fall rate 0.40 | drift 0.206 m |   933s
+iter 1500 | steps  2.69M | return    743.8 | fall rate 0.62 | drift 0.286 m |   939s
+iter 1510 | steps  2.71M | return    826.9 | fall rate 0.42 | drift 0.199 m |   945s
+iter 1520 | steps  2.73M | return    794.3 | fall rate 0.55 | drift 0.249 m |   951s
+iter 1530 | steps  2.74M | return    781.1 | fall rate 0.42 | drift 0.198 m |   957s
+iter 1540 | steps  2.76M | return    721.4 | fall rate 0.55 | drift 0.242 m |   963s
+iter 1550 | steps  2.78M | return    717.6 | fall rate 0.57 | drift 0.271 m |   969s
+iter 1560 | steps  2.80M | return    667.3 | fall rate 0.68 | drift 0.295 m |   975s
+iter 1570 | steps  2.82M | return    836.6 | fall rate 0.50 | drift 0.210 m |   981s
+iter 1580 | steps  2.83M | return    792.9 | fall rate 0.50 | drift 0.239 m |   987s
+iter 1590 | steps  2.85M | return    809.9 | fall rate 0.57 | drift 0.254 m |   992s
+iter 1600 | steps  2.87M | return    714.6 | fall rate 0.60 | drift 0.278 m |   998s
+iter 1610 | steps  2.89M | return    729.0 | fall rate 0.57 | drift 0.274 m |  1004s
+iter 1620 | steps  2.90M | return    715.0 | fall rate 0.62 | drift 0.279 m |  1010s
+iter 1630 | steps  2.92M | return    782.9 | fall rate 0.55 | drift 0.256 m |  1016s
+iter 1640 | steps  2.94M | return    786.1 | fall rate 0.45 | drift 0.202 m |  1022s
+iter 1650 | steps  2.96M | return    801.7 | fall rate 0.45 | drift 0.208 m |  1028s
+iter 1660 | steps  2.98M | return    735.8 | fall rate 0.60 | drift 0.240 m |  1034s
+iter 1670 | steps  2.99M | return    819.9 | fall rate 0.45 | drift 0.196 m |  1040s
+iter 1680 | steps  3.01M | return    746.2 | fall rate 0.60 | drift 0.263 m |  1046s
+iter 1690 | steps  3.03M | return    805.9 | fall rate 0.45 | drift 0.213 m |  1053s
+iter 1700 | steps  3.05M | return    783.7 | fall rate 0.47 | drift 0.240 m |  1059s
+iter 1710 | steps  3.07M | return    676.3 | fall rate 0.57 | drift 0.292 m |  1065s
+iter 1720 | steps  3.08M | return    794.2 | fall rate 0.47 | drift 0.230 m |  1072s
+iter 1730 | steps  3.10M | return    804.8 | fall rate 0.47 | drift 0.221 m |  1078s
+iter 1740 | steps  3.12M | return    786.6 | fall rate 0.42 | drift 0.221 m |  1084s
+iter 1750 | steps  3.14M | return    697.9 | fall rate 0.57 | drift 0.268 m |  1090s
+iter 1760 | steps  3.16M | return    815.2 | fall rate 0.42 | drift 0.193 m |  1096s
+iter 1770 | steps  3.17M | return    734.5 | fall rate 0.53 | drift 0.259 m |  1103s
+iter 1780 | steps  3.19M | return    751.0 | fall rate 0.42 | drift 0.202 m |  1109s
+iter 1790 | steps  3.21M | return    810.8 | fall rate 0.33 | drift 0.163 m |  1116s
+iter 1800 | steps  3.23M | return    781.9 | fall rate 0.38 | drift 0.185 m |  1122s
+iter 1810 | steps  3.25M | return    844.2 | fall rate 0.40 | drift 0.182 m |  1128s
+iter 1820 | steps  3.26M | return    774.6 | fall rate 0.47 | drift 0.236 m |  1135s
+iter 1830 | steps  3.28M | return    747.5 | fall rate 0.60 | drift 0.263 m |  1141s
+iter 1840 | steps  3.30M | return    713.4 | fall rate 0.55 | drift 0.265 m |  1147s
+iter 1850 | steps  3.32M | return    730.7 | fall rate 0.50 | drift 0.204 m |  1153s
+iter 1860 | steps  3.33M | return    777.9 | fall rate 0.53 | drift 0.240 m |  1159s
+iter 1870 | steps  3.35M | return    717.0 | fall rate 0.57 | drift 0.255 m |  1165s
+iter 1880 | steps  3.37M | return    785.4 | fall rate 0.50 | drift 0.235 m |  1171s
+iter 1890 | steps  3.39M | return    810.8 | fall rate 0.40 | drift 0.214 m |  1178s
+iter 1900 | steps  3.41M | return    827.0 | fall rate 0.38 | drift 0.161 m |  1183s
+iter 1910 | steps  3.42M | return    726.6 | fall rate 0.53 | drift 0.234 m |  1189s
+iter 1920 | steps  3.44M | return    717.9 | fall rate 0.60 | drift 0.276 m |  1196s
+iter 1930 | steps  3.46M | return    799.6 | fall rate 0.38 | drift 0.204 m |  1201s
+iter 1940 | steps  3.48M | return    737.9 | fall rate 0.50 | drift 0.224 m |  1207s
+iter 1950 | steps  3.50M | return    949.8 | fall rate 0.23 | drift 0.120 m |  1213s
+iter 1960 | steps  3.51M | return    799.8 | fall rate 0.40 | drift 0.183 m |  1219s
+iter 1970 | steps  3.53M | return    844.2 | fall rate 0.30 | drift 0.151 m |  1225s
+iter 1980 | steps  3.55M | return    769.8 | fall rate 0.45 | drift 0.199 m |  1231s
+iter 1990 | steps  3.57M | return    827.4 | fall rate 0.42 | drift 0.196 m |  1237s
+iter 2000 | steps  3.59M | return    733.6 | fall rate 0.50 | drift 0.256 m |  1243s
+iter 2010 | steps  3.60M | return    826.3 | fall rate 0.47 | drift 0.222 m |  1250s
+iter 2020 | steps  3.62M | return    864.2 | fall rate 0.25 | drift 0.122 m |  1256s
+iter 2030 | steps  3.64M | return    777.9 | fall rate 0.38 | drift 0.195 m |  1262s
+iter 2040 | steps  3.66M | return    743.0 | fall rate 0.53 | drift 0.244 m |  1267s
+iter 2050 | steps  3.68M | return    775.9 | fall rate 0.40 | drift 0.215 m |  1273s
+iter 2060 | steps  3.69M | return    747.5 | fall rate 0.40 | drift 0.189 m |  1280s
+iter 2070 | steps  3.71M | return    844.8 | fall rate 0.38 | drift 0.173 m |  1286s
+iter 2080 | steps  3.73M | return    780.7 | fall rate 0.47 | drift 0.217 m |  1292s
+iter 2090 | steps  3.75M | return    907.3 | fall rate 0.30 | drift 0.180 m |  1298s
+iter 2100 | steps  3.76M | return    862.9 | fall rate 0.30 | drift 0.155 m |  1304s
+iter 2110 | steps  3.78M | return    850.3 | fall rate 0.25 | drift 0.139 m |  1310s
+iter 2120 | steps  3.80M | return    768.7 | fall rate 0.42 | drift 0.202 m |  1316s
+Process SpawnProcess-6:
+Process SpawnProcess-5:
+Process SpawnProcess-9:
+Process SpawnProcess-3:
+Process SpawnProcess-2:
+Process SpawnProcess-4:
+Process SpawnProcess-14:
+Process SpawnProcess-7:
+Process SpawnProcess-13:
+Process SpawnProcess-8:
+Process SpawnProcess-10:
+Process SpawnProcess-12:
+Process SpawnProcess-11:
+Process SpawnProcess-1:
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+ConnectionResetError: [Errno 104] Connection reset by peer
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+ConnectionResetError: [Errno 104] Connection reset by peer
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/home/prapanch/projects/one-brain-many-bodies/training/ppo.py", line 56, in _worker
+    cmd, data = remote.recv()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+ConnectionResetError: [Errno 104] Connection reset by peer
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+ConnectionResetError: [Errno 104] Connection reset by peer
+  File "/usr/lib/python3.10/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+ConnectionResetError: [Errno 104] Connection reset by peer
+ConnectionResetError: [Errno 104] Connection reset by peer

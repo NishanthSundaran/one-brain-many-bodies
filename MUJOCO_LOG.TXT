@@ -183,3 +183,13 @@ impratio: parent has 1 (default), child has 10, keeping parent value
 integrator: parent has 0 (default), child has 3, keeping parent value
 cone: parent has 0 (default), child has 1, keeping parent value
 
+WARNING Thu Aug 27 18:50:26 2026: Attach conflict when attaching 'left_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING Thu Aug 27 18:50:26 2026: Attach conflict when attaching 'right_sharpa_wave' to 'h1', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+integrator: parent has 0 (default), child has 3, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+

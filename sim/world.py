@@ -19,7 +19,7 @@ DEFAULT_OBJECTS = [
      "rgba": [0.15, 0.65, 0.2, 1], "pos": [0.30, -0.10]},
     {"name": "blue cup", "kind": "cylinder", "size": [0.03, 0.05],
      "rgba": [0.15, 0.35, 0.85, 1], "pos": [0.40, 0.10]},
-    {"name": "bin", "kind": "bin", "size": [0.07, 0.07, 0.035],
+    {"name": "bin", "kind": "bin", "size": [0.065, 0.065, 0.035],
      "rgba": [0.45, 0.45, 0.5, 1], "pos": [0.38, -0.22]},
 ]
 
@@ -76,12 +76,34 @@ class World:
         self.graspable: list[str] = []     # subset with free joints
         self.object_half: dict[str, float] = {}  # half-height, for grasp/place
         if objects is None:
-            objects = [dict(o) for o in DEFAULT_OBJECTS]
-            for o in objects:
-                if self.object_layout and o["name"] in self.object_layout:
-                    o["pos"] = self.object_layout[o["name"]]
+            template = {o["name"]: o for o in DEFAULT_OBJECTS}
+            if self.object_layout:
+                # A body's scene lists exactly what is on its bench: keeping
+                # the default props as well leaves objects sitting where the
+                # arm cannot reach, or inside each other.
+                objects = [dict(template[n], pos=p)
+                           for n, p in self.object_layout.items()]
+            else:
+                objects = [dict(o) for o in DEFAULT_OBJECTS]
         for obj in objects:
             self._add_object(w, obj)
+
+        # The hold is a weld, not friction (see README), so the hand does not
+        # need to touch what it picks up — and if it does, the palm shoves
+        # the object off the bench on the way in. Exclude hand<->object
+        # contact and let the weld do its job. The palm still collides with
+        # benches and the floor, so hands cannot pass through the world.
+        for side, arm in body.cfg["arms"].items():
+            hand = arm.get("hand", {})
+            prefix = hand.get("link_prefix")
+            links = [arm["ee_parent"]]
+            if prefix:
+                links += [b.name for b in spec.bodies
+                          if b.name.startswith(prefix)]
+            for link in links:
+                for bname in self.graspable:
+                    spec.add_exclude(name=f"nc_{link}_{bname}",
+                                     bodyname1=link, bodyname2=bname)
 
         # Pre-compiled (inactive) hand<->object welds: MuJoCo equalities must
         # exist at compile time; grasp/release toggles them at runtime.
