@@ -140,7 +140,16 @@ rather than tuning this one.
   config — a demonstration of the body layer composing hardware, not a
   configuration Unitree ships.
 - The VLM chooses *what* and *where* by marker ID; exact 3D poses come from the simulator (Set-of-Mark grounding), not monocular estimation.
-- Locomotion starts as kinematic base motion; a pretrained RL policy is a stretch goal.
+- **Walking and precise placement are done by different controllers.** The
+  pretrained policy has the better gait but cannot be steered to a spot —
+  commanded to a target it orbits and eventually falls, landing a metre or
+  two out. Navigation in `demos/08` therefore uses the stance policy, moving
+  its hold point a stride at a time: slower, and accurate to a few
+  centimetres. Getting one policy to do both is the honest next step.
+- The workspace is tuned tightly around the measured reach envelope (~0.43 m
+  at bench height in the stance the policy adopts). Objects inboard of the
+  shoulder line make the IK roll the upper arm into the torso, and objects
+  beyond ~0.40 m are simply out of range; there is little slack either way.
 
 ## License
 
