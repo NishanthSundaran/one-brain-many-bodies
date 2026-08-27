@@ -32,9 +32,11 @@ Rules:
   the other side of the table, grasp with the arm matching the TARGET's
   side instead (left if target y > 0, right if y < 0).
 - grasp lifts the object; place releases it. One object per hand.
-- You can only reach objects on the table you are standing at. MARKERS
-  entries include "table": if it is not "table", walk_to that table first,
-  then grasp. Walk back to "table" before placing anything there.
+- If you have a walk_to tool: you can only reach objects on the table you
+  are standing at. MARKERS entries include "table"; if it is not "table",
+  walk_to that table first, then grasp, and walk back before placing there.
+  If you have no walk_to tool, everything you can act on is already in
+  reach.
 - place with an object NAME drops onto that object: only do that for
   containers (like the bin). To put something NEXT TO an object, pass
   "target": [x, y, z] = that object's MARKERS position with y shifted

@@ -34,11 +34,16 @@ class Agent:
                  allowed_tools: tuple = DEFAULT_TOOLS):
         self.rt, self.world, self.rig = rt, world, rig
         self.vlm = vlm or OllamaVLM()
-        # a small tool surface keeps a 3B planner on the rails: reach is
-        # subsumed by grasp/place for tabletop tasks and only invites loops
-        schemas = [s for s in tool_schemas() if s["name"] in allowed_tools]
+        # A small tool surface keeps a 3B planner on the rails (reach is
+        # subsumed by grasp/place and only invites loops), and it must match
+        # what *this body* can do: handing a fixed-base robot a walk_to it
+        # can never complete just burns turns on a tool that always fails.
+        schemas = [s for s in tool_schemas()
+                   if s["name"] in allowed_tools
+                   and (s["name"] != "walk_to" or rt.loco is not None)]
+        self.tools = [s["name"] for s in schemas]
         self.system = build_system_prompt(schemas)
-        self.schema = response_schema([s["name"] for s in schemas])
+        self.schema = response_schema(self.tools)
         self.transcript: list[dict] = []
 
     def _table_name(self, pos) -> str:
