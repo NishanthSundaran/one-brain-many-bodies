@@ -31,6 +31,7 @@
 | 5 | **Same brain, two bodies: G1 and H1 side by side** | ✅ `demos/06_cross_embodiment.py` |
 | 6 | **Physics-based walking** (learned policy, real balance) | ✅ `demos/07_physics_walk.py` |
 | 6b | **Walk over and fetch it, balancing throughout** | ✅ `demos/08_walk_and_fetch.py` |
+| 6c | **Reaching: solved vs learned, side by side** | ✅ `demos/09_reach_ik_vs_rl.py` |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |
 
 ## Setup
@@ -102,6 +103,54 @@ Three lessons cost real time and are worth stating plainly:
 - **Position is not enough — hold the heading too.** With no yaw term the
   robot slowly turned on the spot, which puts the bench where its arms are
   not, and is exactly as fatal to a reach as drifting away from it.
+
+### Solved or learned? Two reaching controllers, measured
+
+`demos/09_reach_ik_vs_rl.py` gives both the same three targets and the same
+physics. Left: measured IK, solved offline, arm only. Right: a policy trained
+here (`training/train_reach.py`) driving arm, waist and legs together — 22
+joints — so it can lean and shift its stance.
+
+| | within 6 cm | mean error | notes |
+|---|---|---|---|
+| deterministic IK | 0/3 | 0.075 m | topples on a low target; needs no training |
+| learned whole-body | 3/3 | **0.046 m** | ~2x more accurate; falls on far targets |
+
+Over a wider sweep including targets past the arm's own limit, the picture is
+a genuine trade-off rather than a winner: the learned policy is about twice
+as accurate where it works and reaches a low target the IK path falls over
+on, because it can bend and counterbalance instead of only swinging an arm.
+The IK path degrades gracefully — at 0.44-0.50 m it misses by ~0.15 m but
+stays on its feet, where the learned policy topples. Its fall rate was still
+0.10-0.35 at the end of training, so that is under-training rather than a
+limit of the method.
+
+The useful conclusion is the one an engineer has to make anyway: use IK where
+the workspace is known and staying upright matters more than centimetres, and
+a learned whole-body policy where the target may be anywhere and the arm
+alone cannot get there.
+
+### One policy for both jobs — an honest negative result
+
+A single policy for walking *and* manipulating was trained
+(`training/train_locomanip.py`, 9M steps, velocity commands including "stand
+exactly here", arms moving throughout) and measured worse at each job than
+the two specialists:
+
+| | walking policy | stance policy | unified |
+|---|---|---|---|
+| hold still, arms idle | ±0.2 m | **0.014 m** | 0.207 m |
+| hold through a reach | falls | **0.03 m** | 0.384 m |
+| walk 5 s at 0.5 m/s | **2.9 m** | shuffles | 0.35 m |
+| walk-and-fetch | — | **succeeds** | fails |
+
+It learned to stay upright with the arms moving, but neither holds a mark nor
+travels. Its fall rate was still 0.42 and its return still climbing when the
+run ended, so this is under-training, not impossibility — one network learning
+velocity tracking, precise position holding *and* arm-disturbance rejection
+needs far more than the 9M steps that were plenty for either alone. The
+checkpoint and trainer are kept; `unified_policy` in the body config switches
+it on.
 
 ### How human is the gait?
 

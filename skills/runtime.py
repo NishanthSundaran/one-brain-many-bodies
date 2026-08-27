@@ -70,6 +70,7 @@ class Runtime:
         self.use_plant = False
         self.arm_stance_gain = 1.0
         self.stance = None
+        self.unified = None
         self._standing = False
         self.station = None   # (xy, yaw) the standing controller holds
         self._station_i = np.zeros(2)   # integral state of the station PI
@@ -93,10 +94,22 @@ class Runtime:
             self.rot_gain = float(cfg.get("rot_gain", 0.8))
             self.rot_cap = float(cfg.get("rot_cap", 0.25))
             self.qdot_cap = float(cfg.get("qdot_cap", 0.35))
-            ck = REPO / cfg.get("stance_policy", "")
-            if cfg.get("stance_policy") and ck.exists():
-                from controllers.stance import StancePolicy
-                self.stance = StancePolicy(self.model, ck, cfg["stand_angles"])
+            # One policy for both jobs when it is available: walking and
+            # standing become the same controller with different commands,
+            # so there is no handover to fall over in.
+            uni = REPO / cfg.get("unified_policy", "")
+            if cfg.get("unified_policy") and uni.exists():
+                from controllers.unified import UnifiedPolicy
+                self.unified = UnifiedPolicy(self.model, uni,
+                                             cfg["stand_angles"])
+                self.loco = self.unified
+                self.stance = self.unified
+            else:
+                ck = REPO / cfg.get("stance_policy", "")
+                if cfg.get("stance_policy") and ck.exists():
+                    from controllers.stance import StancePolicy
+                    self.stance = StancePolicy(self.model, ck,
+                                               cfg["stand_angles"])
             # hold the start pose: facing +x at the primary table's station
             self.home_station = np.array(self.model.body_pos[self.root_id][:2])
             self.station = (self.home_station.copy(), 0.0)
@@ -129,7 +142,13 @@ class Runtime:
 
     def step(self, seconds: float) -> None:
         for _ in range(int(round(seconds / self.dt))):
-            if self._standing and self.stance is not None:
+            if self.unified is not None:
+                # Same controller either way: hold a station or track the
+                # pursuit command that walk_to is issuing.
+                if self._standing:
+                    self._hold_station()
+                self.unified.step(self.data)
+            elif self._standing and self.stance is not None:
                 self.stance.step(self.data)
             elif self.loco is not None and not self._planted:
                 self._hold_station()
@@ -280,8 +299,15 @@ class Runtime:
             if dist < tol and abs(yaw_err) < 0.08:
                 return True
             step = err if dist <= stride else err / dist * stride
-            self.stance.hold(self.base_xy + step,
-                             self.base_yaw + float(np.clip(yaw_err, -0.3, 0.3)))
+            hold_xy = self.base_xy + step
+            hold_yaw = self.base_yaw + float(np.clip(yaw_err, -0.3, 0.3))
+            if self.unified is not None:
+                # One controller: aim the station at the next stride and let
+                # the same policy walk the base there.
+                self.station = (hold_xy, hold_yaw)
+                self._station_i[:] = 0.0
+            else:
+                self.stance.hold(hold_xy, hold_yaw)
             self.step(2.5)
         return bool(np.linalg.norm(target - self.base_xy) < tol * 2.5)
 
@@ -344,11 +370,18 @@ class Runtime:
                 self.model.actuator_biasprm[act, 1] = -kp
 
     def stand_still(self) -> None:
-        """Hand the legs to the stance policy: it holds the pelvis on its
-        mark while the arms work, which the travelling policy cannot do."""
+        """Hold position while the arms work. With the unified policy this is
+        just a zero velocity command plus the station controller; with the
+        two-policy setup it hands the legs to the stance policy."""
         if self.stance is None or self._standing:
             return
         self._set_arm_gain(self.arm_stance_gain)
+        if self.unified is not None:
+            self._standing = True
+            self.station = (self.base_xy.copy(), self.base_yaw)
+            self._station_i[:] = 0.0
+            self.step(0.5)
+            return
         self.stance.hold(self.base_xy, self.base_yaw)
         self.stance.last_action[:] = 0.0
         self._standing = True

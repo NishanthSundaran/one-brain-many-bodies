@@ -62,6 +62,10 @@ locomotion:
   # trained here by training/train_stance.py: holds the pelvis on a
   # mark while the arms reach, which the walking policy cannot do
   stance_policy: third_party/policies/g1_stance.pt
+  # A single policy for both jobs was trained (training/train_locomanip.py,
+  # 9M steps) and measured worse at each of them than the two specialists —
+  # see the README. Point `unified_policy` at the checkpoint to use it.
+  # unified_policy: third_party/policies/g1_locomanip.pt
   ctrl_dt: 0.02
   action_scale: 0.5
   # Gait tuned against human walking, scaled for this robot's leg length
