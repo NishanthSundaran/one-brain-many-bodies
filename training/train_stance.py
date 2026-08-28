@@ -3,6 +3,7 @@
 Usage: python training/train_stance.py [iters] [workers]
 """
 
+import os
 import pathlib
 import sys
 import time
@@ -15,7 +16,11 @@ sys.path.insert(0, str(REPO))
 
 from training.ppo import ActorCritic, VecEnv, train  # noqa: E402
 
-OUT = REPO / "third_party" / "policies" / "g1_stance.pt"
+# A run writes here. Overridable so an experiment cannot overwrite the
+# policy the demos ship with before it has been shown to be better:
+#   STANCE_OUT=g1_stance_feet.pt python training/train_stance.py ...
+OUT = (REPO / "third_party" / "policies"
+       / os.environ.get("STANCE_OUT", "g1_stance.pt"))
 
 
 def main():

@@ -87,9 +87,62 @@ hour per run on a laptop, no GPU involved.
 | | walking policy | trained stance policy |
 |---|---|---|
 | hold a mark, idle | ±0.2 m | **1.4 cm** |
-| hold through a full arm reach | falls | **3 cm**, stays upright |
+| hold through a scripted arm disturbance | falls | **3 cm**, stays upright |
 | heading drift | uncontrolled | **2°** |
 | place the base on a spot | 0.2-2 m out | **2-4 cm** |
+
+Those are training-environment numbers and the second one does not survive
+contact with the real skill. Running an actual grasp instead of a scripted
+arm sweep (`eval/score_stance.py`, five different start states) the base
+drifts **29 +/- 8 cm**, not 3 cm, and the grasp succeeds **3 times in 5**.
+The disturbance a real reach applies is not the disturbance the policy was
+trained against: a grasp approaches, descends, closes, lifts and carries a
+load, over several seconds, and the training sweep does none of that.
+
+### Standing still, measured at the feet
+
+The stance policy holds the pelvis beautifully and gets there by dancing.
+`eval/score_stance.py` measures what the pelvis metric cannot see:
+
+| | measured | a person |
+|---|---|---|
+| foot lifts, standing idle | **21.5 /s** | ~0 |
+| foot lifts, during a reach | **20.8 /s** | ~0 |
+| knee flexion | 50° | ~5° (this body's home pose is already 38°) |
+| knee asymmetry | 9° mean, 22° peak | ~0° |
+| pelvis pitch | -9° | ~0° |
+
+With the joints frozen and no policy running, the plant produces 0.5 foot
+lifts per second, so the chatter is learned behaviour, not a contact-solver
+artefact. The cause is visible in the reward: holding the pelvis still is
+worth 3.5, and keeping a foot on the floor was worth 0.2 and asked only that
+*one* foot be down. Dancing is the cheapest way to satisfy that.
+
+**Putting the feet in the reward did not fix it, and that is worth
+recording.** Two retrains, one gentle (+0.8 both feet down, -3.0 foot height,
+-0.3 foot speed) and one aggressive (+2.0 / -12.0 / -1.0), both trained to
+convergence:
+
+| | reaching chatter | drift through a reach | grasped |
+|---|---|---|---|
+| shipped | 17.6 +/- 8.3 /s | **29.1 +/- 8.0 cm** | 3/5 |
+| gentle foot reward | 14.8 +/- 7.3 /s | 61.5 +/- 57.3 cm | 3/5 |
+| aggressive foot reward | (fails the task) | | 0/1 |
+
+The gentle version looked like a clear win on a single run (21.5 to 17.5
+foot lifts per second, drift 31 cm to 23 cm) and that was noise: repeated
+across five start states the difference falls inside one standard deviation,
+and one run drifted 1.7 m. The aggressive version chatters least of all and
+fails the grasp outright, which makes sense once stated plainly: a foot the
+policy may never lift is a foot it cannot catch itself with.
+
+So the checkpoint that ships is the original. The lesson is not "foot rewards
+do not work", it is that **standing balance here is chaotic enough that a
+single run cannot tell you anything**, and that hand-shaping a posture term
+by term is the wrong instrument for "stand like a person". A motion-capture
+reference specifies that in one tracking term instead of five weights tuned
+against each other. That is the same conclusion the gait reached about foot
+clearance, now reached twice.
 
 Three lessons cost real time and are worth stating plainly:
 
