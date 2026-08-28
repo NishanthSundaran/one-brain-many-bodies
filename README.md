@@ -32,6 +32,7 @@
 | 6 | **Physics-based walking** (learned policy, real balance) | ✅ `demos/07_physics_walk.py` |
 | 6b | **Walk over and fetch it, balancing throughout** | ✅ `demos/08_walk_and_fetch.py` |
 | 6c | **Reaching: solved vs learned, side by side** | ✅ `demos/09_reach_ik_vs_rl.py` |
+| 6d | **Human-motion metrics + IK vs RL for grasping** | ✅ `eval/` |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |
 
 ## Setup
@@ -104,31 +105,132 @@ Three lessons cost real time and are worth stating plainly:
   robot slowly turned on the spot, which puts the bench where its arms are
   not, and is exactly as fatal to a reach as drifting away from it.
 
+### Does it move like a person? A number, not an opinion
+
+"Human-like" is easy to claim and easy to fool yourself about, so it is
+measured. `eval/human_motion.py` scores a hand trajectory against the
+signatures of human reaching (Flash & Hogan 1985): a near-straight path with
+a single-peaked, bell-shaped speed profile.
+
+| what it measures | human |
+|---|---|
+| straightness (path / direct distance), or absolute bow on short moves | <1.15x, or <12 mm |
+| for a reach around a via point, how near it passes the waypoint | <40 mm |
+| overshoot past the target | <6% |
+| dwell: fraction of the motion halted in its own interior | <8% |
+| peak speed / mean speed | 1.5 to 2.6 |
+| when peak speed occurs | 30 to 60% |
+
+`eval/score_grasp_motion.py` runs the real grasp and place skills and scores
+every motion they ask for. Three of the four now pass every criterion:
+
+| motion | shape | overshoot | dwell | peak/mean | peak at | human |
+|---|---|---|---|---|---|---|
+| reach to the object | via miss 12 mm | 4% | 4% | 2.32 | 58% | yes |
+| lift | bow 20 mm (1.01x) | 0% | 0% | 1.94 | 56% | yes |
+| carry to the bin | via miss 13 mm | 0% | 0% | 1.78 | 73% | no |
+| retreat | bow 28 mm (1.09x) | 0% | 0% | 1.66 | 46% | yes |
+
+Four things had to change, and each was found by measuring rather than by
+watching:
+
+- **Plan the trajectory, do not chase the target.** A position servo gets a
+  straight line for free but peaks at 83% of the motion, accelerating into
+  the target where a person decelerates into it. Planning minimum jerk in
+  time and tracking it moves the peak to the middle.
+- **Blend through via points.** Reaching over clutter as "up, stop, across,
+  stop, down" is three movements. One Catmull-Rom curve on one minimum-jerk
+  clock is one movement, and the terminal descent folds into it rather than
+  being its own 4 cm primitive.
+- **Give position priority over orientation near the target.** Position and
+  palm orientation compete for the same joint velocity in one damped
+  least-squares solve. The palm's canonical orientation is not always
+  reachable, so its term never converges and sits at its rate cap; once the
+  speed profile decelerates, that constant angular demand is the largest
+  thing left in the command. Measured: the last stretch of every reach walked
+  *away* from the target, 30 mm out to 60 mm. Fading orientation out over the
+  last 6 cm took landing error from 60 mm to under 3 mm.
+- **Let the correction run straight out of the reach.** Human reaching is a
+  fast primary movement plus a short slow correction, not one ballistic
+  throw. Pausing between the two is the stop-and-go that reads as a machine,
+  and scaling the correction to the error keeps it a coda rather than a third
+  of the movement.
+
+The one still failing peaks at 73%: carrying a load, the arm lags its plan
+and is still speeding up past the middle. Lead compensation is the textbook
+answer and was tried; it made this motion worse, not better.
+
 ### Solved or learned? Two reaching controllers, measured
 
 `demos/09_reach_ik_vs_rl.py` gives both the same three targets and the same
 physics. Left: measured IK, solved offline, arm only. Right: a policy trained
-here (`training/train_reach.py`) driving arm, waist and legs together — 22
-joints — so it can lean and shift its stance.
+here (`training/train_reach.py`) driving arm, waist and legs together, 22
+joints, so it can lean and shift its stance.
 
-| | within 6 cm | mean error | notes |
-|---|---|---|---|
-| deterministic IK | 0/3 | 0.075 m | topples on a low target; needs no training |
-| learned whole-body | 3/3 | **0.046 m** | ~2x more accurate; falls on far targets |
+Retraining the policy to track a minimum-jerk reference rather than to
+minimise final distance roughly doubled its accuracy:
 
-Over a wider sweep including targets past the arm's own limit, the picture is
-a genuine trade-off rather than a winner: the learned policy is about twice
-as accurate where it works and reaches a low target the IK path falls over
-on, because it can bend and counterbalance instead of only swinging an arm.
-The IK path degrades gracefully — at 0.44-0.50 m it misses by ~0.15 m but
-stays on its feet, where the learned policy topples. Its fall rate was still
-0.10-0.35 at the end of training, so that is under-training rather than a
-limit of the method.
+| | within 6 cm | mean error |
+|---|---|---|
+| deterministic IK | 0/3 | 0.075 m |
+| learned, rewarded on final distance | 3/3 | 0.046 m |
+| learned, rewarded on tracking a human trajectory | **3/3** | **0.024 m** |
 
-The useful conclusion is the one an engineer has to make anyway: use IK where
-the workspace is known and staying upright matters more than centimetres, and
-a learned whole-body policy where the target may be anywhere and the arm
-alone cannot get there.
+That is worth stating plainly, because it is the opposite of the usual
+trade-off: asking the policy to move the way a person does made it *more*
+accurate, not less. Rewarded only on where the hand ends up, it lunged,
+hitting peak speed in the first 5% of the motion and tracing five times the
+direct distance before settling. Correct, and nothing like a person.
+
+### So which one should grasp?
+
+`eval/score_reach_controllers.py` runs both, on the same targets, in two
+scenes: the empty world the policy trained in, and at the bench where
+grasping actually happens.
+
+| scene | controller | mean error | within 6 cm | upright |
+|---|---|---|---|---|
+| open | deterministic IK | 0.408 m | 2/3 | 2/3 |
+| open | learned whole-body | **0.022 m** | **3/3** | **3/3** |
+| bench | deterministic IK | **0.082 m** | 1/3 | **3/3** |
+| bench | learned whole-body | 0.516 m | 1/3 | 2/3 |
+
+**Grasping should use IK.** Not because it reaches better (in the open the
+policy is nearly twenty times more accurate) but because grasping happens at
+a bench, and the policy has never seen one. It was trained in an empty world,
+so a bench is not an obstacle it avoids badly, it is contact dynamics it has
+never felt, and its accuracy collapses from 22 mm to half a metre. The IK
+path goes the other way: the bench is where it is at its best.
+
+The recommendation, then, is not "IK is better". It is:
+
+- **IK for the grasp itself**, in the scene it was tuned for, where it is
+  also the only one of the two that currently produces human-shaped hand
+  paths (3 of 4 motions pass every criterion above, against 0 of 6 for the
+  policy).
+- **The learned policy for whole-body reaching in the open**, where a target
+  may be anywhere and the arm alone cannot get there.
+- And the un-human motion of the policy is not a fact about RL. It is a fact
+  about its reward and its training scene, both of which are fixable: the
+  same change that made it track a human trajectory already halved its error.
+  Training it in a scene with a bench is the obvious next step.
+
+### Human arm motion costs a balancing robot its balance
+
+On the fixed-base body the arms move on a minimum-jerk profile. On the
+balancing body they do not, and that is a measured decision rather than an
+oversight. The stance policy learned to reject arm disturbances shaped like
+the smoothstep profile it was trained against; swapping in minimum jerk at
+the same duration makes the robot reach correctly and then fall over, on
+every target. Stretching the move to 1.75x reaches better in isolation (3/3
+upright at 63 mm, against 2/3 for the profile it ships with) but costs the
+walk-and-fetch, which needs the arm quick enough not to hold a load out
+through a long move.
+
+So a balancing body's arms move gently and slightly robotically, on purpose.
+Moving them like a person's means retraining the stance policy against
+minimum-jerk disturbances: a training job, not a tuning one, and the same
+conclusion the gait work reached about foot clearance.
 
 ### One policy for both jobs — an honest negative result
 

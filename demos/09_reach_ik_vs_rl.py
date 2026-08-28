@@ -117,11 +117,17 @@ def run(method, label, colour, targets):
         state["target"] = tgt
 
         if method == "ik":
-            rt.move_arm_ready("right")
+            rt.move_arm_ready("right")   # each target is its own trial
             rt.reach_joint_space("right", tgt)
             rt.step(0.6)
         else:
-            pol.aim(tgt)
+            # Each target is its own trial for the policy too. It starts
+            # every training episode from the body's home stance at rest;
+            # begun instead from wherever the previous reach left the robot
+            # leaning, it is being asked about a state it has never seen.
+            rt.body.reset(world.data)
+            mujoco.mj_forward(world.model, world.data)
+            pol.aim(tgt, world.data.site_xpos[hand_site].copy())
             for i in range(int(4.0 / rt.dt)):
                 pol.step(world.data)
                 mujoco.mj_step(world.model, world.data)

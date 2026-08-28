@@ -95,9 +95,11 @@ def run(rt, world, target, arm=None):
         # legs cannot settle against.
         ok = rt.reach_joint_space(arm, tpos + [0, 0, hover_h])
     else:
-        rt.servo_ee(arm, [tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
-                    speed=0.18, tol=0.05, timeout=patience)
-        ok = rt.servo_ee(arm, tpos + [0, 0, hover_h], timeout=patience)
+        # One blended motion over and down to the release point: the drop
+        # used to be a separate 3 cm primitive with its own speed profile.
+        ok = rt.reach_via(arm, [[tpos[0], tpos[1], tpos[2] + hover_h + 0.08],
+                                tpos + [0, 0, hover_h],
+                                tpos + [0, 0, drop]])
     if not ok:
         # graceful degradation: don't strand the object in a stuck hand.
         # Set it down at a neutral mid-table spot both arms can reach and
@@ -119,8 +121,6 @@ def run(rt, world, target, arm=None):
     if balancing:
         rt.reach_joint_space(arm, tpos + [0, 0, drop], duration=1.2,
                              seed="current")
-    else:
-        rt.servo_ee(arm, tpos + [0, 0, drop], speed=0.08)
     rt.set_hand(arm, "open")
     rt.release(arm)
     rt.step(0.4)  # let it settle
@@ -128,7 +128,7 @@ def run(rt, world, target, arm=None):
         rt.reach_joint_space(arm, rt.ee_pos(arm) + [0, 0, RETRACT],
                              duration=1.2, seed="current")
     else:
-        rt.servo_ee(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
+        rt.reach_line(arm, rt.ee_pos(arm) + [0, 0, RETRACT])
     result = {"ok": True, "arm": arm, "placed": held_name}
     if note:
         result["note"] = note

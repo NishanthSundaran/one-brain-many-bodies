@@ -40,7 +40,7 @@ def run(rt, world, object, arm=None):
                 "error": f"'{object}' is outside the {arm} arm's workspace; "
                          f"use the other arm"}
 
-    rt.square_up()
+    rt.gaze_at(pos)          # look at it before reaching for it
     rt.approach_object(pos)   # stand, and step if the target is out of range
     rt.plant()                # no-op unless this body plants to manipulate
     pos = world.object_pos(bname)
@@ -73,16 +73,20 @@ def run(rt, world, object, arm=None):
         # extra arm move is a disturbance the legs have to absorb.
         ok = rt.reach_joint_space(arm, pos + [0, 0, half_h + HOVER_GRIP])
     else:
-        rt.servo_ee(arm, [pos[0], pos[1], pos[2] + travel_h],
-                    speed=0.18, tol=0.05, timeout=patience)
-        ok = rt.servo_ee(arm, pos + [0, 0, approach_h], timeout=patience)
+        # One blended motion over the clutter and all the way down to the
+        # grip point, rather than up-stop-across-stop-down-stop-down. The
+        # final descent used to be its own primitive, which made it a 4 cm
+        # movement with its own acceleration and braking phase, the tell
+        # that reads as a robot placing its hand rather than a person
+        # reaching for something. See Runtime.reach_via.
+        half_top = world.object_half.get(bname, 0.03) + CLEAR
+        ok = rt.reach_via(arm, [[pos[0], pos[1], pos[2] + travel_h],
+                                pos + [0, 0, approach_h],
+                                world.object_pos(bname) + [0, 0, half_top]])
     if not ok:
         rt.recover(arm)
         return {"ok": False, "arm": arm, "error": "could not reach above object"}
     half = world.object_half.get(bname, 0.03)
-    if not balancing:
-        rt.servo_ee(arm, world.object_pos(bname) + [0, 0, half + CLEAR],
-                    speed=0.08)
     top = world.object_pos(bname) + [0, 0, half]
     ee = rt.ee_pos(arm)
     if balancing:
@@ -99,5 +103,21 @@ def run(rt, world, object, arm=None):
         return {"ok": False, "arm": arm, "error": "hand did not get close enough"}
     rt.attach(arm, bname)
     rt.set_hand(arm, "closed")
-    rt.servo_ee(arm, world.object_pos(bname) + [0, 0, LIFT])
+    if balancing:
+        # Lift to a fixed height above the object, not LIFT above the hand:
+        # the palm is already hovering ~11 cm up, so lifting from there ends
+        # a hand's width higher than this body can afford. Reaching high
+        # pitches a balancing robot's mass forward, and it goes over, which
+        # it duly did, after an otherwise clean fetch.
+        # A balancing robot gets the gentle tracker: half the feedback gain,
+        # a lower speed cap and no corrective submovement. The settings that
+        # make a fixed-base reach crisp are a disturbance the legs cannot
+        # absorb while also carrying something, and it walks away off course.
+        rt.reach_line(arm, world.object_pos(bname) + [0, 0, LIFT],
+                      gain=3.0, cap=0.6, correct=False)
+    else:
+        # Lift straight up from where the hand actually is, not up a column
+        # above the object's nominal centre: any lateral grasp error would
+        # otherwise be smuggled into the lift, curving it sideways.
+        rt.reach_line(arm, rt.ee_pos(arm) + [0, 0, LIFT])
     return {"ok": True, "arm": arm, "holding": object}

@@ -48,6 +48,9 @@ class ReachPolicy:
         self.n_substeps = max(1, int(round(CTRL_DT / model.opt.timestep)))
         self.last_action = np.zeros(len(CONTROLLED), dtype=np.float32)
         self.target = None
+        self.hand0 = None
+        self.reach_time = 1.0
+        self.elapsed = 0.0
         self._counter = 0
 
     def _sensor(self, data, sid):
@@ -58,14 +61,37 @@ class ReachPolicy:
         R = data.xmat[self.pelvis].reshape(3, 3)
         return R.T @ (np.asarray(world_pos) - data.xpos[self.pelvis])
 
-    def aim(self, world_target) -> None:
+    def aim(self, world_target, hand_pos=None) -> None:
+        """Begin a reach, exactly as the training episode does.
+
+        The policy was trained to track a minimum-jerk reference sweeping
+        from where the hand started to the goal, not to charge at a static
+        point, so deployment has to hand it the same thing. Told instead to
+        go straight to a target, a policy rewarded on final distance lunges:
+        it hits peak speed in the first 5% of the motion and then dithers,
+        tracing five times the direct distance. Correct, and nothing like a
+        person.
+        """
         self.target = np.asarray(world_target, dtype=float)
+        self.hand0 = (self.target.copy() if hand_pos is None
+                      else np.asarray(hand_pos, dtype=float))
+        self.reach_time = float(np.clip(
+            0.5 + 1.7 * np.sqrt(np.linalg.norm(self.target - self.hand0)),
+            0.6, 2.6))
+        self.elapsed = 0.0
+
+    def reference(self) -> np.ndarray:
+        """Where the hand should be now: the minimum-jerk point on the line."""
+        s = min(1.0, self.elapsed / self.reach_time)
+        u = s * s * s * (10.0 - 15.0 * s + 6.0 * s * s)
+        return self.hand0 + u * (self.target - self.hand0)
 
     def observe(self, data) -> np.ndarray:
         gravity = data.site_xmat[self.imu].reshape(3, 3).T @ np.array(
             [0.0, 0.0, -1.0])
         t_local = self._to_base(data, self.target)
         h_local = self._to_base(data, data.site_xpos[self.hand])
+        r_local = self._to_base(data, self.reference())
         return np.concatenate([
             gravity,
             self._sensor(data, self.gyro),
@@ -73,7 +99,7 @@ class ReachPolicy:
             data.qpos[self.qpos] - self.default,
             data.qvel[self.qvel] * 0.1,
             t_local,
-            t_local - h_local,
+            r_local - h_local,
             self.last_action,
         ]).astype(np.float32)
 
@@ -83,6 +109,7 @@ class ReachPolicy:
         self._counter += 1
         if self._counter % self.n_substeps:
             return
+        self.elapsed += CTRL_DT
         obs = np.clip((self.observe(data) - self.mean) / self.std, -10, 10)
         with torch.no_grad():
             action = self.net.mu(self.net.pi(

@@ -106,9 +106,23 @@ class ReachEnv:
             d.qpos[self.qpos_adr] - self.default,
             d.qvel[self.qvel_adr] * 0.1,
             target_local,
-            target_local - hand_local,        # what is left to close
+            self._to_base(self._reference()) - hand_local,   # where to be now
             self.last_action,
         ]).astype(np.float32)
+
+    def _reference(self):
+        """Where the hand should be *now*.
+
+        The first version rewarded only the final distance, and the policy
+        learned exactly that: it lunged, hitting peak speed in the first 5%
+        of the motion and tracing five times the direct distance before
+        settling. Correct, and nothing like a person. Rewarding it to track a
+        minimum-jerk straight line instead makes the human trajectory the
+        objective rather than an afterthought.
+        """
+        s = min(1.0, self.t * CTRL_DT / self.reach_time)
+        u = s * s * s * (10.0 - 15.0 * s + 6.0 * s * s)
+        return self.hand0 + u * (self.target - self.hand0)
 
     def _new_target(self):
         """Anywhere useful in front of the robot, including places an arm on
@@ -130,6 +144,10 @@ class ReachEnv:
         self.last_action = np.zeros(self.act_dim, dtype=np.float32)
         self.target = self._new_target()
         self.t = 0
+        self.hand0 = self._hand_pos()
+        self.reach_time = float(np.clip(
+            0.5 + 1.7 * np.sqrt(np.linalg.norm(self.target - self.hand0)),
+            0.6, 2.6))
         self.best = np.linalg.norm(self.target - self._hand_pos())
         return self._obs()
 
@@ -146,12 +164,15 @@ class ReachEnv:
         gravity = d.site_xmat[self.imu].reshape(3, 3).T @ np.array([0, 0, -1.0])
         upright = float(-gravity[2])
         dist = float(np.linalg.norm(self.target - self._hand_pos()))
+        track = float(np.linalg.norm(self._reference() - self._hand_pos()))
         drift = float(np.linalg.norm(pos[:2] - self.home_xy))
 
         reward = (
             1.0                                          # alive
-            + 3.0 * np.exp(-(dist / 0.10) ** 2)          # get the hand there
-            - 1.5 * dist                                 # ... at every scale
+            + 2.0 * np.exp(-(track / 0.06) ** 2)         # be where a person
+            - 2.0 * track                                #   would be, now
+            + 2.0 * np.exp(-(dist / 0.10) ** 2)          # and end on target
+            - 1.0 * dist
             + 1.5 * float(dist < REACH_TOL)              # and hold it there
             + 1.0 * max(0.0, upright)
             + 0.8 * np.exp(-((pos[2] - 0.70) / 0.08) ** 2)

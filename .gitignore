@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 third_party/menagerie/
 docs/execution_plan.*
+training/logs/

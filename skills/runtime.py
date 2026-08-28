@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pathlib
 
+from contextlib import contextmanager
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -20,6 +22,22 @@ ROT_GAIN = 2.5       # 1/s toward the canonical palm orientation
 ROT_MAX = 1.2        # rad/s
 STATION_SPEED = 0.3  # m/s cap while holding a station
 LATERAL_SPEED = 0.3  # m/s cap on sideways commands (topples above this)
+GAZE_MAX = 0.20      # rad: how far the torso turns to look at a target
+
+# Trajectory tracking, tuned against the human-motion metrics in
+# eval/human_motion.py (see the sweep in the README).
+LEAD = 0.0          # seconds of anticipation ahead of the plan
+TRACK_GAIN = 6.0    # feedback on the aim point
+SPEED_CAP = 1.0     # m/s; a human hand peaks near 1 m/s on a long reach
+CORRECT_TOL = 0.010  # m: closer than this and the reach needs no correction
+CORRECT_TIME = 0.35  # s: longest corrective submovement
+CORRECT_MIN = 0.15   # s: shortest; the correction is scaled to the error so
+                     # it stays a coda to the reach rather than a third of it
+WINDUP = 0.15        # rad: anti-windup bound on how far ctrl may lead the joint
+# Below this distance to the target the palm-orientation task is faded out,
+# handing the arm's whole velocity budget to position. See reach_line.
+ORIENT_FADE = 0.06
+
 
 from bodies.body import EE_SITE
 from controllers.locomotion import POLICY_JOINTS
@@ -58,6 +76,10 @@ class Runtime:
         self.on_frame = None  # callable(t) for demos; None = headless
         self._t = 0.0
         self._held: dict[str, str | None] = {s: None for s in self.arm}
+        # Set before anything steps: a mobile body starts stepping inside
+        # this constructor, and step() consults these.
+        self._trace = None
+        self._trace_side = "right"
 
         # Locomotion. A mobile body walks under a learned policy running in
         # closed loop on the real physics state; there is no scripted base
@@ -155,11 +177,28 @@ class Runtime:
                 self.loco.step(self.data)
             mujoco.mj_step(self.model, self.data)
             self._t += self.dt
+            if self._trace is not None:
+                self._trace.append(self.ee_pos(self._trace_side))
             if self.on_frame is not None:
                 self.on_frame(self._t)
 
     def ee_pos(self, side: str) -> np.ndarray:
         return self.data.site_xpos[self.ik[side].site_id].copy()
+
+    @contextmanager
+    def trace(self, side: str):
+        """Record the hand path, one sample per control step, for scoring.
+
+        Sampling here rather than at render rate matters: the human-motion
+        metrics are speed-profile shapes, and a 30 Hz GIF-frame sample of a
+        500 Hz loop smears the peak that is being measured.
+        """
+        prev, prev_side = self._trace, self._trace_side
+        self._trace, self._trace_side = [], side
+        try:
+            yield self._trace
+        finally:
+            self._trace, self._trace_side = prev, prev_side
 
     # ---------------- base frame ----------------
 
@@ -687,20 +726,264 @@ class Runtime:
             # anti-windup: the position target may never drift far from the
             # actual joints, or a blocked arm winds up and shoves through
             new_ctrl = self.data.ctrl[a["act"]] + qdot * self.dt
-            new_ctrl = np.clip(new_ctrl, q - 0.15, q + 0.15)
+            new_ctrl = np.clip(new_ctrl, q - WINDUP, q + WINDUP)
             self.data.ctrl[a["act"]] = np.clip(
                 new_ctrl, a["limits"][:, 0], a["limits"][:, 1])
             self.step(self.dt)
         return np.linalg.norm(target - self.ee_pos(side)) < tol * 2
 
-    def _interp_ctrl(self, side: str, target, duration: float) -> None:
+    @staticmethod
+    def _min_jerk(s: float) -> float:
+        """Minimum-jerk time scaling: 10s^3 - 15s^4 + 6s^5.
+
+        People do not move between two points on a smoothstep. Reaching
+        follows a minimum-jerk profile (Flash & Hogan): a single smooth
+        bell-shaped speed curve, zero velocity *and* zero acceleration at
+        both ends. It is the difference between a motion that starts and
+        stops crisply and one that eases the way an arm actually does.
+        """
+        return s * s * s * (10.0 - 15.0 * s + 6.0 * s * s)
+
+    @staticmethod
+    def _smoothstep(s: float) -> float:
+        """The gentler profile a balancing body's arms move on."""
+        return s * s * (3.0 - 2.0 * s)
+
+    def _interp_ctrl(self, side: str, target, duration: float | None = None,
+                     counterbalance: bool = True) -> None:
+        """Move one arm along a minimum-jerk path, with the rest of the body
+        joining in the way a person's does."""
         a = self.arm[side]
         start = self.data.ctrl[a["act"]].copy()
+        target = np.asarray(target, dtype=float)
+        travel = float(np.max(np.abs(target - start)))
+        if duration is None:
+            # Bigger motions take longer, but sub-linearly: a reach twice as
+            # far is not twice as slow. People scale duration with distance
+            # roughly like this, and a fixed duration makes long motions
+            # frantic and short ones sluggish.
+            duration = float(np.clip(0.55 + 1.5 * np.sqrt(travel), 0.7, 3.2))
+
+        # Minimum jerk on a fixed base, smoothstep on a balancing one. The
+        # human profile is not free here: the stance policy learned to reject
+        # arm disturbances shaped like a smoothstep, and swapping in minimum
+        # jerk makes this robot reach correctly and then fall over, on every
+        # target. Stretching the move to 1.75x reaches better in isolation
+        # (3/3 upright, 63 mm) but costs the walk-and-fetch, which needs the
+        # arm quick enough to not hold a load out through a long move. Moving
+        # a balancing body's arms like a person's is a retraining job, not a
+        # tuning one, the same conclusion the gait reached.
+        profile = self._min_jerk if self.loco is None else self._smoothstep
+        if self.loco is not None:
+            # The free arm stays out of it too: a counterbalancing swing is a
+            # second disturbance bought for a cosmetic gain.
+            counterbalance = False
+
+        other = "left" if side == "right" else "right"
+        free_arm = (counterbalance and other in self.arm
+                    and self.held(other) is None
+                    and self.arm[other]["home_ctrl"] is not None)
+        if free_arm:
+            other_start = self.data.ctrl[self.arm[other]["act"]].copy()
+            swing = np.zeros_like(other_start)
+            swing[0] = 0.10 * np.sign(travel)   # shoulder pitch, gently
+
         n = max(1, int(duration / self.dt))
         for i in range(n):
-            s = (i + 1) / n
-            s = s * s * (3 - 2 * s)  # smoothstep profile
-            self.data.ctrl[a["act"]] = (1 - s) * start + s * np.asarray(target)
+            s = profile((i + 1) / n)
+            self.data.ctrl[a["act"]] = (1 - s) * start + s * target
+            if free_arm:
+                # The free arm does not hang dead while the other works: it
+                # drifts out and back, which is what makes a one-armed
+                # motion read as a person rather than a manipulator.
+                self.data.ctrl[self.arm[other]["act"]] = (
+                    other_start + swing * np.sin(np.pi * s))
+            self.step(self.dt)
+
+    def reach_via(self, side: str, waypoints, duration: float | None = None,
+                  settle: float = 0.25, **kw) -> bool:
+        """Move the hand through waypoints as ONE motion.
+
+        Reaching over an obstacle as "up, stop, across, stop, down" is the
+        loudest machine tell left in the stack: three separate bell curves
+        with the hand at rest between them. People pass *through* a via point
+        without stopping: the corner rounds off and the whole reach keeps a
+        single bell-shaped speed profile. So the waypoints become a smooth
+        curve (Catmull-Rom, sampled by arc length) traversed on one
+        minimum-jerk clock.
+        """
+        pts = [self.ee_pos(side)] + [np.asarray(w, dtype=float)
+                                     for w in waypoints]
+        pts = [p for i, p in enumerate(pts)
+               if i == 0 or np.linalg.norm(p - pts[i - 1]) > 1e-4]
+        if len(pts) < 2:
+            return True
+        if len(pts) == 2:
+            return self.reach_line(side, pts[1], duration, settle, **kw)
+        curve = self._catmull_rom(np.array(pts))
+        arc = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(curve, axis=0),
+                                                  axis=1))]
+        total = float(arc[-1])
+        if duration is None:
+            duration = float(np.clip(0.5 + 1.7 * np.sqrt(total), 0.6, 3.0))
+
+        def path(u):
+            return np.array([np.interp(u * total, arc, curve[:, k])
+                             for k in range(3)])
+
+        return self._track(side, path, pts[-1], duration, settle,
+                           via=pts[1:-1], **kw)
+
+    @staticmethod
+    def _catmull_rom(pts: np.ndarray, per_span: int = 40) -> np.ndarray:
+        """Smooth interpolating spline through the waypoints. Interpolating,
+        not approximating: a via point placed to clear an obstacle has to be
+        passed through, not merely approached."""
+        ext = np.vstack([pts[0] + (pts[0] - pts[1]), pts,
+                         pts[-1] + (pts[-1] - pts[-2])])
+        out = []
+        for i in range(len(pts) - 1):
+            p0, p1, p2, p3 = ext[i], ext[i + 1], ext[i + 2], ext[i + 3]
+            t = np.linspace(0, 1, per_span, endpoint=(i == len(pts) - 2))[:, None]
+            out.append(0.5 * ((2 * p1)
+                              + (-p0 + p2) * t
+                              + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t ** 2
+                              + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3))
+        return np.vstack(out)
+
+    def reach_line(self, side: str, target, duration: float | None = None,
+                   settle: float = 0.25, correct: bool = True,
+                   counterbalance: bool = True,
+                   lead: float | None = None, cap: float | None = None,
+                   gain: float | None = None) -> bool:
+        """Move the hand along a straight line with a bell-shaped speed.
+
+        Those two things are what make a reach look human. A position servo
+        gets the straight line for free but its speed profile is wrong: it
+        creeps in and peaks at ~83% of the motion, accelerating into the
+        target, where a person decelerates into it and peaks near the middle.
+        So the trajectory is planned in time (minimum jerk along the line)
+        and tracked, rather than left to a controller chasing an error.
+        """
+        a = self.arm[side]
+        start = self.ee_pos(side)
+        target = np.asarray(target, dtype=float)
+        dist = float(np.linalg.norm(target - start))
+        if dist < 1e-4:
+            return True
+        if duration is None:
+            duration = float(np.clip(0.5 + 1.7 * np.sqrt(dist), 0.6, 2.6))
+        return self._track(side, lambda u: start + u * (target - start),
+                           target, duration, settle, correct=correct,
+                           counterbalance=counterbalance, lead=lead, cap=cap,
+                           gain=gain)
+
+    def _track(self, side: str, path, target, duration: float,
+               settle: float = 0.25, correct: bool = True,
+               counterbalance: bool = True,
+               lead: float | None = None, cap: float | None = None,
+               gain: float | None = None, via=None) -> bool:
+        """Track `path(u)`, u in [0, 1], on a minimum-jerk clock.
+
+        `path` is the geometry and the clock is the timing; separating them
+        is what lets a straight reach and a blended via-point reach share one
+        controller and one speed profile. `via` is carried only so an
+        evaluator can see which waypoints this motion was meant to round.
+        """
+        a = self.arm[side]
+        target = np.asarray(target, dtype=float)
+        lead = LEAD if lead is None else lead
+        cap = SPEED_CAP if cap is None else cap
+        gain = TRACK_GAIN if gain is None else gain
+        n = max(2, int(duration / self.dt))
+        prev = path(0.0)
+        for i in range(n):
+            ref = path(self._min_jerk((i + 1) / n))
+            # The arm is position-actuated, so the hand lags whatever the
+            # plan asks for. Tracking the reference at the present instant
+            # therefore peaks late (measured: 66% of the motion) and lands
+            # tens of millimetres short. Aiming at where the plan will be
+            # LEAD seconds from now cancels that lag, which is also what a
+            # person does: reaching is feed-forward, not error-chasing.
+            aim = path(self._min_jerk(min(1.0, (i + 1) / n + lead / duration)))
+            v = (ref - prev) / self.dt + gain * (aim - self.ee_pos(side))
+            n_v = np.linalg.norm(v)
+            if n_v > cap:
+                v *= cap / n_v
+            # Position and orientation are one 6-D task to a damped
+            # least-squares solve, which means they compete for the same
+            # joint velocity. The palm's canonical orientation is not always
+            # reachable, so its term never converges and sits at the rate cap
+            # and once the min-jerk profile decelerates, that constant
+            # angular demand is the largest thing left in the command and
+            # drags the hand off target. Measured: the last stretch of every
+            # reach walked *away*, 30 mm out to 60 mm. So orientation is
+            # demoted near the target: get the palm level during transport,
+            # then hold the wrist still and land the hand.
+            fade = min(1.0, np.linalg.norm(target - self.ee_pos(side))
+                       / ORIENT_FADE)
+            qdot = self.ik[side].solve(
+                self.data, np.r_[v, fade * self._orientation_twist(side)])
+            qdot *= joint_limit_scale(self.data.qpos[a["qpos"]], a["limits"])
+            q = self.data.qpos[a["qpos"]]
+            self.data.ctrl[a["act"]] = np.clip(
+                np.clip(self.data.ctrl[a["act"]] + qdot * self.dt,
+                        q - WINDUP, q + WINDUP),
+                a["limits"][:, 0], a["limits"][:, 1])
+            prev = ref
+            self.step(self.dt)
+        # Settle only if nothing follows. A person's corrective submovement
+        # runs straight out of the primary one; pausing between them is the
+        # stop-and-go that makes a motion read as a machine.
+        err = float(np.linalg.norm(target - self.ee_pos(side)))
+        self.step(0.05 if (correct and err > CORRECT_TOL) else settle)
+        # Corrective submovement. A ballistic reach undershoots, as it does for
+        # people too, which is why human reaching is a fast primary movement
+        # followed by a short, slow correction (Woodworth 1899). Doing the
+        # same here is both the honest model and what takes the landing error
+        # from ~24 mm to under 10 mm, which is the difference between a grasp
+        # and a nudge.
+        err = float(np.linalg.norm(target - self.ee_pos(side)))
+        if correct and err > CORRECT_TOL:
+            # No lead and a low speed cap: anticipation is what makes the
+            # primary movement fast, and exactly what makes a short
+            # correction overshoot and ring.
+            self.reach_line(side, target,
+                            duration=float(np.clip(0.15 + 4.0 * err,
+                                                   CORRECT_MIN, CORRECT_TIME)),
+                            settle=0.15, correct=False, counterbalance=False,
+                            lead=0.0, cap=0.15)
+            err = float(np.linalg.norm(target - self.ee_pos(side)))
+        return bool(err < 0.05)
+
+    def gaze_at(self, world_pos, duration: float = 0.5) -> None:
+        """Turn to look at what you are about to touch.
+
+        People orient head and torso to a target before the hand arrives:
+        gaze leads the reach by a few hundred milliseconds. Skipping it is a
+        large part of why a robot doing an otherwise-correct motion still
+        reads as a machine. On a balancing body the waist belongs to the
+        locomotion policy, so this stays out of its way.
+        """
+        gaze = self.body.cfg.get("gaze_joint")
+        if self.loco is not None or gaze is None:
+            return
+        act = self.body.actuator_of.get(gaze)
+        if act is None:
+            return
+        local = self.to_base(world_pos)
+        # Capped deliberately: the manipulation poses are tuned for a
+        # square torso, and past ~0.2 rad the twist moves the arm's frame
+        # enough that the reach misses. A glance, not a turn.
+        yaw = float(np.clip(np.arctan2(local[1], max(local[0], 0.05)),
+                            -GAZE_MAX, GAZE_MAX))
+        lo, hi = self.model.actuator_ctrlrange[act]
+        target = float(np.clip(yaw, lo, hi))
+        start = float(self.data.ctrl[act])
+        n = max(1, int(duration / self.dt))
+        for i in range(n):
+            s = self._min_jerk((i + 1) / n)
+            self.data.ctrl[act] = (1 - s) * start + s * target
             self.step(self.dt)
 
     def set_down_spot(self, world) -> list:
