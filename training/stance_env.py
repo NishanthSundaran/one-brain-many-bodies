@@ -17,6 +17,8 @@ from __future__ import annotations
 import pathlib
 
 import mujoco
+import os
+
 import numpy as np
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -31,7 +33,12 @@ ARMS = [f"{s}_{j}_joint" for s in ("left", "right")
 CONTROLLED = LEGS + WAIST                      # 15 actuators the policy owns
 
 CTRL_DT = 0.02                                 # 50 Hz control
-EPISODE_S = 6.0
+EPISODE_S = float(os.environ.get("STANCE_EPISODE_S", 6.0))
+# Fraction of episodes given a goal to walk to rather than a mark to hold.
+# 0.0 reproduces the shipped stance policy exactly; set it to train a
+# travel-capable policy (see the README section on the handover).
+TRAVEL_PROB = float(os.environ.get("STANCE_TRAVEL_PROB", 0.0))
+GOAL_MAX = float(os.environ.get("STANCE_GOAL_MAX", 1.0))
 ACTION_SCALE = 0.4
 
 
@@ -93,7 +100,7 @@ class StanceEnv:
             d.qpos[self.arm_qpos] - self.arm_default,
             d.qvel[self.arm_qvel] * 0.1,
             self.last_action,
-            base_err * 5.0,
+            np.clip(base_err * 5.0, -5.0, 5.0),
             [np.cos(yaw_err), np.sin(yaw_err)],
         ]).astype(np.float32)
 
@@ -139,7 +146,26 @@ class StanceEnv:
         d.qvel[:6] = self.rng.uniform(-0.05, 0.05, 6)
         mujoco.mj_forward(m, d)
 
-        self.home_xy = d.xpos[self.pelvis][:2].copy()
+        # The goal is COMMANDED, not simply wherever the robot woke up.
+        # This is the whole change: the policy that holds a mark and the
+        # policy that travels to one become the same policy, which removes
+        # the handover that no amount of tuning could survive. Measured: the
+        # walking policy falls whenever it is engaged from a stance-held
+        # state, because the stance policy idles at 9-16 rad/s of joint
+        # chatter and never presents the quiet gait pose it needs, and
+        # freezing the legs to fix the pose topples the robot outright.
+        here = d.xpos[self.pelvis][:2].copy()
+        # Half the episodes hold station. At 35% the policy learned to
+        # travel and forgot how to stand still through an arm reach: it
+        # travelled 0.9 m to within 0.13 m but then fell during a grasp,
+        # which is the capability the project already had and must not lose.
+        if self.rng.random() >= TRAVEL_PROB:
+            self.home_xy = here            # hold station, as before
+        else:
+            ang = self.rng.uniform(-np.pi, np.pi)
+            dist = self.rng.uniform(0.25, GOAL_MAX)
+            self.home_xy = here + dist * np.array([np.cos(ang), np.sin(ang)])
+        self.goal_dist0 = float(np.linalg.norm(self.home_xy - here))
         R = d.xmat[self.pelvis].reshape(3, 3)
         self.home_yaw = float(np.arctan2(R[1, 0], R[0, 0]))
         self.last_action = np.zeros(self.act_dim, dtype=np.float32)
@@ -205,7 +231,11 @@ class StanceEnv:
 
         self.last_action = action.astype(np.float32)
         self.t += 1
-        fell = bool(pos[2] < 0.5 or upright < 0.6 or drift > 0.6
+        # Drift is distance from the GOAL, so a 1 m command starts at 1 m of
+        # drift. Terminate on going *backwards* from where it was sent, not
+        # on the goal being far away.
+        fell = bool(pos[2] < 0.5 or upright < 0.6
+                    or drift > self.goal_dist0 + 0.6
                     or yaw_err > 0.9)
         if fell:
             reward -= 8.0

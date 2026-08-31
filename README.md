@@ -344,6 +344,29 @@ rather than tuning this one.
   config — a demonstration of the body layer composing hardware, not a
   configuration Unitree ships.
 - The VLM chooses *what* and *where* by marker ID; exact 3D poses come from the simulator (Set-of-Mark grounding), not monocular estimation.
+- **The robot fetches from 0.3 m away, and that is the whole envelope.**
+  Navigation was measured directly, fresh robot per trial, target straight
+  ahead on a clear floor:
+
+  | distance | arrives | final error | outcome |
+  |---|---|---|---|
+  | 0.30 m | yes | 0.06 m | upright |
+  | 0.50 m | no | 0.73 m | falls |
+  | 0.70 m | no | 0.28 m | falls |
+  | 0.90 m | no | 1.04 m | falls |
+
+  So `demos/08` fetching over 0.30 m is not a modest demo, it is the edge of
+  what works. Neither controller scales: the stance policy falls past half a
+  metre, and the walking policy cannot be steered (commanded to a point it
+  turns the wrong way and goes down, which `walk_to(gait=True)` now exposes
+  for anyone who wants to confirm it). A walk-across-the-room-and-fetch demo
+  was attempted and removed rather than shipped broken.
+
+  Worth knowing before planning around this: the bench itself is an obstacle.
+  It is 1.24 m long and sits 0.25 m in front of the start pose, so any target
+  behind or beside it requires routing around, and both controllers walk
+  straight into it.
+
 - **Walking and precise placement are done by different controllers.** The
   pretrained policy has the better gait but cannot be steered to a spot —
   commanded to a target it orbits and eventually falls, landing a metre or
@@ -358,3 +381,57 @@ rather than tuning this one.
 ## License
 
 MIT. Robot models are from [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) (Unitree G1: Apache-2.0, Unitree H1: BSD-3, Robotis OP3: Apache-2.0) and are not redistributed here.
+
+## The walking problem is a handover problem
+
+`demos/08` fetches over 0.30 m and never takes a step: instrumenting the
+controllers shows the walking policy is called exactly zero times, and the
+stance policy drives the legs for 100% of the run.
+
+| | foot lifts/s |
+|---|---|
+| human standing (LAFAN1 mocap) | 0.0 |
+| human walking | 1.4 |
+| this project's gait policy, walking | 3.0 |
+| this project's stance policy, "walking" | **21** |
+
+Both controllers work in isolation. The gait policy tracks a forward command
+to 11 degrees and covers 2.97 m in 5 s on open floor. The stance policy holds
+a mark through an arm reach. Every failure is at the seam:
+
+- **Engaging the walking policy from any stance-held state falls.** The
+  stance policy idles at 9-16 rad/s of joint chatter, so it never presents
+  the quiet gait pose the walking policy needs. Settling, resetting the gait
+  phase, easing into `stand_angles` and retrying were all tried and all
+  failed.
+- **Freezing the legs to fix the pose topples the robot**, which this README
+  already said about `plant()`.
+- **Steering the gait policy to a point fails**: `walk_to(gait=True)` exposes
+  it. Sideways-right commands fall outright.
+
+### Removing the seam: one policy that travels and holds
+
+`training/stance_env.py` already conditions on a goal (`home_xy`, with
+`base_err` in the observation); it simply always set that goal to wherever
+the robot woke up. Setting `STANCE_TRAVEL_PROB` makes the goal a *command*.
+`STANCE_TRAVEL_PROB=0` (the default) reproduces the shipped policy exactly.
+
+Measured in the demo scene, one command, no hop chaining:
+
+| policy | travel 0.6 m | travel 0.9 m | grasp |
+|---|---|---|---|
+| shipped stance | 0.72 m, fell | 0.64 m, fell | **yes** |
+| travel v1 (2.2M steps, 65% travel) | **0.08 m, upright** | 0.35 m, fell | no |
+| travel v2 (+1.8M steps, 50% travel) | 0.13 m, fell | 1.12 m, fell | no |
+
+So the idea works and is not finished. A single command now walks 0.6 m to
+within 8 cm where the shipped policy falls, which breaks the 0.30 m envelope
+and removes the handover. But neither trained policy keeps the grasp, and
+rebalancing towards holding made both capabilities worse rather than
+trading between them, with the fall rate never dropping below 0.57.
+
+That is the same shape as the unified-policy negative result above:
+undertrained rather than impossible. What it needs is the treatment that
+worked in the LAFAN1 work (`../loco-lab`): far more steps, and hard
+termination constraints rather than reward weights, since soft terms moved
+nothing there across three attempts.
