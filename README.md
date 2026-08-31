@@ -4,6 +4,10 @@
 
 > Work in progress. Milestone demos land as GIFs below as they are built.
 
+Companion repo: [g1-motion-imitation](https://github.com/NishanthSundaran/g1-motion-imitation),
+DeepMimic-style motion imitation for the G1 on LAFAN1 mocap. The gait work
+there is what diagnosed the walking limitation documented below.
+
 ## Architecture
 
 ```
