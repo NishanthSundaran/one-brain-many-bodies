@@ -73,6 +73,8 @@ locomotion:
   # 1.9). 1.5 Hz gave a 3.0 steps/s shuffle; below 1.2 Hz the policy leaves
   # the distribution it was trained in and falls over.
   gait_freq: 1.3
+  # feet, for timing the walk-to-stance handover (Runtime.gait_stop)
+  feet: [left_ankle_roll_link, right_ankle_roll_link]
   walk_speed: 0.75
   # The policy also swings the arms, and a walk without arm swing is the
   # single most robotic-looking thing a humanoid can do, so it keeps them.

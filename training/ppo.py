@@ -128,9 +128,17 @@ class RunningNorm:
 
 
 def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
-          clip=0.2, lr=3e-4, epochs=4, minibatches=4, on_iter=None):
+          clip=0.2, lr=3e-4, epochs=4, minibatches=4, on_iter=None,
+          norm=None, device=None):
+    # The update runs on the GPU when there is one; rollouts stay on the
+    # CPU workers, and the policy's weights are moved back when it is done.
+    device = torch.device(device or ("cuda" if torch.cuda.is_available()
+                                     else "cpu"))
+    policy.to(device)
     opt = torch.optim.Adam(policy.parameters(), lr=lr)
-    norm = RunningNorm(vec.obs_dim)
+    # A warm start must keep the normaliser its weights were trained
+    # against; a fresh one rescales every input the policy sees.
+    norm = norm or RunningNorm(vec.obs_dim)
     obs = vec.reset()
     norm.update(obs)
     ep_ret = np.zeros(vec.n)
@@ -140,8 +148,8 @@ def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
         O, A, LP, V, R, D = [], [], [], [], [], []
         for _ in range(steps_per_iter):
             nobs = norm(obs)
-            t = torch.as_tensor(nobs, dtype=torch.float32)
-            a, lp, v = policy.act(t)
+            t = torch.as_tensor(nobs, dtype=torch.float32, device=device)
+            a, lp, v = (x.cpu() for x in policy.act(t))
             an = a.numpy()
             nxt, rew, done, infos = vec.step(np.clip(an, -1, 1))
             O.append(nobs); A.append(an); LP.append(lp.numpy())
@@ -155,8 +163,8 @@ def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
         norm.update(obs)
 
         with torch.no_grad():
-            last_v = policy.value(
-                torch.as_tensor(norm(obs), dtype=torch.float32)).numpy()
+            last_v = policy.value(torch.as_tensor(
+                norm(obs), dtype=torch.float32, device=device)).cpu().numpy()
         O = np.array(O); A = np.array(A); LP = np.array(LP)
         V = np.array(V); R = np.array(R); D = np.array(D)
         adv = np.zeros_like(R); gae = 0.0
@@ -166,11 +174,16 @@ def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
             gae = delta + gamma * lam * (1 - D[t]) * gae
             adv[t] = gae
         ret = adv + V
-        b_obs = torch.as_tensor(O.reshape(-1, vec.obs_dim), dtype=torch.float32)
-        b_act = torch.as_tensor(A.reshape(-1, vec.act_dim), dtype=torch.float32)
-        b_lp = torch.as_tensor(LP.reshape(-1), dtype=torch.float32)
-        b_adv = torch.as_tensor(adv.reshape(-1), dtype=torch.float32)
-        b_ret = torch.as_tensor(ret.reshape(-1), dtype=torch.float32)
+        b_obs = torch.as_tensor(O.reshape(-1, vec.obs_dim), dtype=torch.float32,
+                                device=device)
+        b_act = torch.as_tensor(A.reshape(-1, vec.act_dim), dtype=torch.float32,
+                                device=device)
+        b_lp = torch.as_tensor(LP.reshape(-1), dtype=torch.float32,
+                                device=device)
+        b_adv = torch.as_tensor(adv.reshape(-1), dtype=torch.float32,
+                                device=device)
+        b_ret = torch.as_tensor(ret.reshape(-1), dtype=torch.float32,
+                                device=device)
         b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
 
         n = b_obs.shape[0]
@@ -178,7 +191,7 @@ def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
         for _ in range(epochs):
             np.random.shuffle(idx)
             for mb in np.array_split(idx, minibatches):
-                mb = torch.as_tensor(mb)
+                mb = torch.as_tensor(mb, device=device)
                 dist = policy.dist(b_obs[mb])
                 lp = dist.log_prob(b_act[mb]).sum(-1)
                 ratio = (lp - b_lp[mb]).exp()
@@ -194,4 +207,5 @@ def train(vec, policy, steps_per_iter=64, iters=300, gamma=0.99, lam=0.95,
         if on_iter and recent:
             on_iter(it, float(np.mean(recent[-40:])),
                     float(np.mean(falls[-40:])), float(np.mean(drifts[-40:])))
+    policy.to("cpu")
     return norm

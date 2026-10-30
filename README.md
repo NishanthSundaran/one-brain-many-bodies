@@ -37,6 +37,7 @@ there is what diagnosed the walking limitation documented below.
 | 6b | **Walk over and fetch it, balancing throughout** | ✅ `demos/08_walk_and_fetch.py` |
 | 6c | **Reaching: solved vs learned, side by side** | ✅ `demos/09_reach_ik_vs_rl.py` |
 | 6d | **Human-motion metrics + IK vs RL for grasping** | ✅ `eval/` |
+| 6e | **Walk 2.8 m to a bench, pick and place, 17/20** | ✅ `demos/13_walk_across_and_fetch.py` |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |
 
 ## Setup
@@ -439,3 +440,56 @@ undertrained rather than impossible. What it needs is the treatment that
 worked in the LAFAN1 work (`../loco-lab`): far more steps, and hard
 termination constraints rather than reward weights, since soft terms moved
 nothing there across three attempts.
+
+## Walk across, stop, pick and place
+
+![walk to the bench, pick, place](demos/media/13_walk_across_and_fetch.gif)
+
+`demos/13_walk_across_and_fetch.py` closes the handover gap above with two
+policies trained for the seam rather than around it: a walking policy that
+learns to *stop* (`training/walk_stop_env.py`), and a stance policy trained
+from the states that walking policy actually stops in
+(`training/record_stop_states.py`), while replaying the arm commands the demo
+really sends (`training/record_arm_traj.py`).
+
+```bash
+python demos/13_walk_across_and_fetch.py --policy third_party/policies/g1_walk_human.pt \
+    --decide -0.37 --hold stance --stance third_party/policies/g1_stance_human2.pt
+./demos/live_demo.sh          # same run in an interactive viewer, real time
+```
+
+Scored over 20 seeded trials (`eval/score_fetch_quality.py`), each one walk,
+stop, grasp, place and arm home:
+
+| | before | now |
+|---|---|---|
+| full task success | 13/20 | **17/20** |
+| successes with no bench contact (hands included) | n/a | 15/17 |
+| torso lean while manipulating | 36 to 42° | **1.7°** |
+| foot lifts while standing | stepping in place | 97% fewer |
+| task time | about 60 s | about 40 s |
+
+The walk itself (`eval/score_walk_quality.py`): 0 falls in 30 walks, stop
+error 7 cm, cadence about 2 steps/s against 1.9 for a person.
+
+What moved the numbers, in order of effect:
+
+- **Train on the real arm motion.** Random arm goals taught the stance policy
+  to counterbalance with the waist (36° lean). Replaying 40 recorded demo arm
+  trajectories, plus torso and pelvis tilt penalties, brought it under 2°.
+- **Filter the policy output.** A spectrum of the leg joints showed 78% of
+  the motion above 8 Hz, where people have almost none. A first-order filter
+  on the actions, trained with (`STANCE_ACT_FILTER`, `WALKSTOP_ACT_FILTER`),
+  removed it; a stronger filter cost 3 successes and was rejected.
+- **Plan the arm like a person.** Minimum-jerk timing and a Catmull-Rom path
+  through the via points (`Runtime.arm_profile`), and an elbow-first route
+  over the bench edge that lifts the wrist 2.8 cm clear of it instead of
+  4.3 cm into it.
+- **One stance for both jobs.** The block and the bin are placed so a single
+  stop reaches both; a second small step was read by the policy as "arrived"
+  and caused 20 s of shuffling.
+
+Still open: the 3 failures are falls (placing, positioning) or a missed
+grasp; placing still spends about 12 s on small corrections; there is one
+25° lean transient at the stop; and the VLM does not yet drive this demo,
+the sequence is scripted through the same skills it calls.

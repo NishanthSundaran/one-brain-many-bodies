@@ -19,6 +19,10 @@ HOVER = 0.10
 DROP = 0.07
 DROP_CONTAINER = 0.07   # just over the rim: dropped from higher it bounces out
 RETRACT = 0.15
+OVER_TOL = 0.02     # held object this close to a container's centre: drop
+OVER_MAX = 0.04     # ... and never let go further out than this
+OVER_TRIES = 6
+OVER_GAIN = 0.6
 
 
 CLEARANCE = 0.10
@@ -86,6 +90,18 @@ def run(rt, world, target, arm=None):
     rt.square_up()
     rt.plant()
     hover_h = drop + 0.05
+    aim = None
+    if rt.loco is not None and isinstance(target, str):
+        # Aim what is held, not the hand, when dropping into a container. The grasp on a balancing body
+        # accepts a palm up to 8 cm off the object's centre, and the hold
+        # keeps that offset, so a hand centred over the bin drops the block
+        # beside it (measured: 9.5 cm short, on the bin's wall, 8 of 8).
+        # Height too: the palm hovers above what it holds, so the hand
+        # "just over the rim" puts the block below it, into the wall.
+        held_body = rt.held(arm)
+        aim = tpos.copy()
+        grip = rt.ee_pos(arm) - world.object_pos(held_body)
+        tpos = tpos + grip
     # safe-height waypoint: travel above tabletop clutter, then descend
     patience = 16.0 if rt.loco is not None else 4.0
     balancing = rt.loco is not None
@@ -121,6 +137,29 @@ def run(rt, world, target, arm=None):
     if balancing:
         rt.reach_joint_space(arm, tpos + [0, 0, drop], duration=1.2,
                              seed="current")
+    if balancing and aim is not None:
+        # Release on where the object is, not where the hand was sent. The
+        # joint-space reach accepts a hand up to 10 cm off, and the bin is
+        # 13 cm across, so the block was let go over the rim or past the
+        # bench edge (measured 8 to 17 cm off centre in every miss). Nudge
+        # the hand by the object's own error until it is over the middle.
+        for _ in range(OVER_TRIES):
+            off = aim[:2] - world.object_pos(rt.held(arm))[:2]
+            if np.linalg.norm(off) < OVER_TOL:
+                break
+            # Damped and then settled: the base sways a few centimetres
+            # with every arm move, and full-size corrections chased that
+            # sway back and forth (measured: +/-3 to 6 cm, never converging).
+            rt.reach_joint_space(arm, rt.ee_pos(arm) + [*(OVER_GAIN * off), 0.0],
+                                 duration=1.0, tol=0.01, seed="current",
+                                 passes=1)
+            rt.step(0.4)
+        off = aim[:2] - world.object_pos(rt.held(arm))[:2]
+        if np.linalg.norm(off) > OVER_MAX:
+            return {"ok": False, "arm": arm,
+                    "error": f"could not get {held_name} over {target} "
+                             f"({np.linalg.norm(off):.2f} m off); still "
+                             f"holding it"}
     rt.set_hand(arm, "open")
     rt.release(arm)
     rt.step(0.4)  # let it settle

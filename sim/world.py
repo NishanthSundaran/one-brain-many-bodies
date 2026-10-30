@@ -26,8 +26,13 @@ DEFAULT_OBJECTS = [
 
 class World:
     def __init__(self, body, objects: list[dict] | None = None,
-                 extra_tables: list[dict] | None = None):
+                 extra_tables: list[dict] | None = None,
+                 start_xy=None):
         self.body = body
+        # Where a mobile robot starts, if not on the primary table's station.
+        # Used to start a fetch from across the room.
+        self.start_xy = None if start_xy is None else np.asarray(
+            start_xy, dtype=float)[:2]
         scene_cfg = body.cfg.get("scene", {})
         self.table_top = scene_cfg.get("table_top", TABLE_TOP)
         self.table_x = scene_cfg.get("table_x", TABLE_X)
@@ -42,7 +47,7 @@ class World:
         w.add_light(pos=[-1.0, 1.0, 2.0], dir=[0.4, -0.4, -1], diffuse=[0.25, 0.25, 0.25],
                     specular=[0, 0, 0])
         w.add_geom(name="floor", type=mujoco.mjtGeom.mjGEOM_PLANE,
-                   size=[3, 3, 0.1], rgba=[0.32, 0.36, 0.42, 1])
+                   size=[6, 6, 0.1], rgba=[0.32, 0.36, 0.42, 1])
 
         # Each table carries the station the robot works from: the spot it
         # stands on and the direction it faces. The primary table's station
@@ -161,6 +166,10 @@ class World:
     def reset(self, settle: float = 0.5) -> None:
         mujoco.mj_resetData(self.model, self.data)
         self.body.reset(self.data)
+        if self.start_xy is not None and self.body.mobile:
+            root = self.model.body(self.body.cfg["root_body"]).id
+            adr = self.model.jnt_qposadr[self.model.body_jntadr[root]]
+            self.data.qpos[adr:adr + 2] = self.start_xy
         mujoco.mj_forward(self.model, self.data)
         # A mobile body must never free-run: with no controller in the loop
         # it simply collapses, and the locomotion policy then has to recover

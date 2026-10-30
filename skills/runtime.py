@@ -42,11 +42,12 @@ ORIENT_FADE = 0.06
 from bodies.body import EE_SITE
 from controllers.locomotion import POLICY_JOINTS
 from controllers.diff_ik import DiffIK
+from controllers.navigator import GaitNavigator, arrived
 from controllers.admittance import joint_limit_scale
 
 
 class Runtime:
-    def __init__(self, world):
+    def __init__(self, world, start: str = "stance"):
         self.world = world
         self.model, self.data = world.model, world.data
         self.body = world.body
@@ -61,12 +62,27 @@ class Runtime:
                 "limits": np.array([self.body.joint_limits[j] for j in joints]),
                 "home_ctrl": None,  # captured on first use
             }
+            # The joint limits say what a joint can do on its own, not what
+            # the body lets it do: the G1's upper arm hits the torso a few
+            # degrees past straight down, long before its roll limit. An IK
+            # solve that only knows the joint limits picks those jammed poses
+            # and the hand lands 10 to 30 cm off. `ik_limits` narrows a joint
+            # for the solve.
+            ik_lim = self.arm[side]["limits"].copy()
+            for j, lim in (self.body.cfg["arms"][side].get("ik_limits")
+                           or {}).items():
+                ik_lim[joints.index(j)] = lim
+            self.arm[side]["ik_limits"] = ik_lim
             hand = self.body.cfg["arms"][side].get("hand")
             if hand is not None:
                 self.arm[side]["hand_act"] = np.array(
                     [self.model.actuator(n).id for n in hand["actuators"]])
                 self.arm[side]["hand_open"] = np.asarray(hand["open"], dtype=float)
                 self.arm[side]["hand_closed"] = np.asarray(hand["closed"], dtype=float)
+        self._arm_dofs = np.array(
+            [self.model.joint(j).dofadr[0]
+             for joints in self.body.arm_joints.values() for j in joints],
+            dtype=int)
         # Orientation regulation is gentle on a balancing robot: at full
         # strength the task saturates its cap every step, eats the whole IK
         # solution, and the hand rotates instead of reaching.
@@ -92,6 +108,18 @@ class Runtime:
         self.use_plant = False
         self.arm_stance_gain = 1.0
         self.stance = None
+        self.stepper = None
+        # how far to the side a target may sit before approach_object steps
+        # toward it; a caller that has already lined the body up for a
+        # one-handed reach widens it so the skill does not undo that
+        self.approach_lateral = 0.30
+        # Arm motion on a balancing body. Defaults keep the tuned behaviour
+        # (smoothstep, via poses as separate moves); a caller whose stance
+        # policy trained against smoother arm motion can opt in to the
+        # human profile and to passing through via poses without stopping.
+        self.arm_profile = None        # None | "min_jerk"
+        self.blend_vias = False
+        self.catch = None       # bridges the walk-to-stance handover
         self.unified = None
         self._standing = False
         self.station = None   # (xy, yaw) the standing controller holds
@@ -99,6 +127,9 @@ class Runtime:
         self._station_bias = np.zeros(2)  # measured hold offset (base frame)
         self._station_speed = STATION_SPEED
         self._planted = False           # stance mode (see plant/unplant)
+        self.hold_with_walk = False
+        self.hold_station = False
+        self.arm_gravity_comp = False
         self._nominal_gain = self.model.actuator_gainprm[:, 0].copy()
         if self.body.mobile:
             from controllers.locomotion import LocomotionPolicy
@@ -116,6 +147,9 @@ class Runtime:
             self.rot_gain = float(cfg.get("rot_gain", 0.8))
             self.rot_cap = float(cfg.get("rot_cap", 0.25))
             self.qdot_cap = float(cfg.get("qdot_cap", 0.35))
+            self.hold_with_walk = cfg.get("hold_with") == "walk_policy"
+            self.hold_station = bool(cfg.get("hold_station", False))
+            self.arm_gravity_comp = bool(cfg.get("arm_gravity_comp", False))
             # One policy for both jobs when it is available: walking and
             # standing become the same controller with different commands,
             # so there is no handover to fall over in.
@@ -132,9 +166,32 @@ class Runtime:
                     from controllers.stance import StancePolicy
                     self.stance = StancePolicy(self.model, ck,
                                                cfg["stand_angles"])
+                    # A stance policy trained to keep its feet planted
+                    # cannot take the short steps step_to needs; this one
+                    # (one that balances by stepping) does those, and hands
+                    # back once the robot has arrived.
+                    stepper = REPO / cfg.get("step_policy", "")
+                    if cfg.get("step_policy") and stepper.exists():
+                        self.stepper = StancePolicy(self.model, stepper,
+                                                    cfg["stand_angles"])
+                    catch = REPO / cfg.get("catch_policy", "")
+                    if cfg.get("catch_policy") and catch.exists():
+                        self.catch = StancePolicy(self.model, catch,
+                                                  cfg["stand_angles"])
             # hold the start pose: facing +x at the primary table's station
             self.home_station = np.array(self.model.body_pos[self.root_id][:2])
             self.station = (self.home_station.copy(), 0.0)
+            if start == "walk":
+                # Begin under the walking policy, holding the spot it woke
+                # on. The stance-to-walk handover has never worked (the
+                # stance policy idles with too much joint chatter for the
+                # walking policy to take over), so a fetch from across the
+                # room must start walking and hand over to stance only once,
+                # at the bench.
+                self.station = (self.base_xy.copy(), self.base_yaw)
+                self.step(1.5)
+                self._fixed_base_xy = self.base_xy.copy()
+                return
             if self.stance is not None:
                 # Stand on the stance policy from the first tick: every second
                 # spent settling under the travelling policy is drift.
@@ -162,15 +219,33 @@ class Runtime:
 
     # ---------------- core stepping ----------------
 
+    def _gravity_comp(self) -> None:
+        """Feed the arms' gravity torque forward while the runtime moves them.
+
+        The walking body's arms run on the policy's gains, low enough at the
+        wrist (6 Nm/rad) that the hand's own weight bends it 0.15 to 0.3 rad
+        off its command, and the hand lands a hand's length from where the IK
+        put it. A real arm controller cancels gravity with a feedforward
+        torque instead of stiffening the servo; this does the same. Only the
+        arm joints, and only while standing: when walking, the walking policy
+        owns the arms and was trained without it.
+        """
+        dofs = self._arm_dofs
+        on = self._standing and self.arm_gravity_comp
+        self.data.qfrc_applied[dofs] = self.data.qfrc_bias[dofs] if on else 0.0
+
     def step(self, seconds: float) -> None:
         for _ in range(int(round(seconds / self.dt))):
+            if self.arm_gravity_comp:
+                self._gravity_comp()
             if self.unified is not None:
                 # Same controller either way: hold a station or track the
                 # pursuit command that walk_to is issuing.
                 if self._standing:
                     self._hold_station()
                 self.unified.step(self.data)
-            elif self._standing and self.stance is not None:
+            elif (self._standing and self.stance is not None
+                  and not self.hold_with_walk):
                 self.stance.step(self.data)
             elif self.loco is not None and not self._planted:
                 self._hold_station()
@@ -326,6 +401,19 @@ class Runtime:
         if self.stance is None:
             return False
         self.stand_still()
+        if self.stepper is not None and self.unified is None:
+            quiet, self.stance = self.stance, self.stepper
+            self.stance.last_action[:] = 0.0
+            try:
+                return self._step_to(xy, yaw, tol, stride, max_steps)
+            finally:
+                self.stance = quiet
+                quiet.hold(self.base_xy, self.base_yaw)
+                quiet.last_action[:] = 0.0
+                self.step(0.5)
+        return self._step_to(xy, yaw, tol, stride, max_steps)
+
+    def _step_to(self, xy, yaw, tol, stride, max_steps) -> bool:
         target = np.asarray(xy, dtype=float)[:2]
         yaw = self.base_yaw if yaw is None else yaw
         for _ in range(max_steps):
@@ -364,7 +452,8 @@ class Runtime:
         for _ in range(tries):
             self.stand_still()
             local = self.to_base(world_pos)
-            if band[0] <= local[0] <= band[1] and abs(local[1]) <= 0.30:
+            if (band[0] <= local[0] <= band[1]
+                    and abs(local[1]) <= self.approach_lateral):
                 return True
             yaw = self.base_yaw
             side = float(np.clip(local[1], -0.20, 0.20))
@@ -412,7 +501,28 @@ class Runtime:
         """Hold position while the arms work. With the unified policy this is
         just a zero velocity command plus the station controller; with the
         two-policy setup it hands the legs to the stance policy."""
-        if self.stance is None or self._standing:
+        if self._standing:
+            return
+        if self.hold_with_walk:
+            # The walking policy, fine-tuned to stop and to hold through an
+            # arm reach (training/train_walkstop.py), keeps the legs; the
+            # arms go to the arm controller where they are. No handover.
+            self.loco.set_command(0.0, 0.0, 0.0)
+            for a in self.arm.values():
+                self.data.ctrl[a["act"]] = [
+                    self.data.qpos[self.model.jnt_qposadr[
+                        self.model.actuator_trnid[i, 0]]] for i in a["act"]]
+            self.loco.controlled = "leg_waist"
+            self._set_arm_gain(self.arm_stance_gain)
+            self._standing = True
+            # station keeping on top: the policy holds to a few decimetres
+            # through a reach and turns, so the PI nudges it back on its mark
+            self.station = ((self.base_xy.copy(), self.base_yaw)
+                            if self.hold_station else None)
+            self._station_i[:] = 0.0
+            self.step(0.5)
+            return
+        if self.stance is None:
             return
         self._set_arm_gain(self.arm_stance_gain)
         if self.unified is not None:
@@ -430,6 +540,8 @@ class Runtime:
     def walk_again(self) -> None:
         if not self._standing:
             return
+        if self.hold_with_walk:
+            self.loco.controlled = None
         self._set_arm_gain(1.0)
         self._standing = False
         self._station_i[:] = 0.0
@@ -529,7 +641,8 @@ class Runtime:
         return np.linalg.norm(np.asarray(xy) - self.base_xy) < tol * 2.0
 
     def walk_to(self, x: float, y: float, face=None, speed: float = None,
-                tol: float = 0.30, timeout: float = 45.0) -> bool:
+                tol: float = 0.30, timeout: float = 45.0,
+                using: str = "stance") -> bool:
         """Walk to (x, y) under the locomotion policy.
 
         A unicycle pursuit controller: always walk forwards, steering with
@@ -542,6 +655,20 @@ class Runtime:
             raise RuntimeError("this body has no locomotion policy")
         target = np.array([x, y], dtype=float)
         speed = self.walk_speed if speed is None else speed
+        if using == "gait":
+            face_yaw = None
+            if face is not None:
+                fd = np.asarray(face, dtype=float)[:2] - target
+                face_yaw = float(np.arctan2(fd[1], fd[0]))
+            if not self.gait_travel(target, arrive=tol, timeout=timeout):
+                return False
+            self.gait_stop()
+            if self.fallen():
+                return False
+            if face_yaw is not None or np.linalg.norm(
+                    target - self.base_xy) > 0.05:
+                self.step_to(target, face_yaw)
+            return bool(np.linalg.norm(target - self.base_xy) < tol)
         if self.stance is not None:
             # Navigate with the stance policy, a stride at a time. The
             # travelling policy has the better gait (demos/07) but cannot be
@@ -605,6 +732,134 @@ class Runtime:
         self.step(1.0)
         return bool(np.linalg.norm(target - self.base_xy) < tol * 3.0)
 
+    def fallen(self) -> bool:
+        """Low, or tipped past ~45 degrees: the check every demo uses."""
+        R = self.data.xmat[self.root_id].reshape(3, 3)
+        return bool(self.data.xpos[self.root_id][2] < 0.55 or R[2, 2] < 0.7)
+
+    def gait_travel(self, target, arrive: float = 0.30,
+                    timeout: float = 30.0, until=None) -> bool:
+        """Walk to within `arrive` of `target` under the walking policy,
+        steered by controllers/navigator.py, which keeps every command
+        inside the envelope measured by eval/score_gait_commands.py.
+
+        Leaves the robot walking: the policy cannot stop itself, so the
+        caller hands over with gait_stop(). Refuses to start from a standing
+        robot, because the stance-to-walk handover is the one that falls.
+        `until(runtime)` ends the walk early when it returns True: aiming at
+        a point beyond where the walk ends keeps the steering active the
+        whole way (it freezes within FREEZE_R of the target).
+        """
+        if self._standing:
+            raise RuntimeError(
+                "gait_travel starts from a walking robot; stance-to-walk "
+                "handover is unsupported (see README). Use Runtime(..., "
+                "start='walk').")
+        # `target` may be a callable(runtime) -> xy, re-evaluated every
+        # tick: a lookahead point on a line gives line following.
+        goal = target if callable(target) else (
+            lambda _r, t=np.asarray(target, dtype=float)[:2]: t)
+        self.station = None          # the navigator owns the command
+        nav = GaitNavigator()
+        nav.reset(float(self.loco.command[0]), float(self.loco.command[2]))
+        tick = self.loco.n_substeps * self.dt
+        t_end = self._t + timeout
+        while self._t < t_end:
+            target = np.asarray(goal(self), dtype=float)[:2]
+            if arrived(self.base_xy, self.base_yaw, target, arrive):
+                return True
+            if until is not None and until(self):
+                return True
+            vx, wz = nav.command(self.base_xy, self.base_yaw, target, tick)
+            self.loco.set_command(vx, 0.0, wz)
+            self.step(tick)
+            if self.fallen():
+                return False
+        return False
+
+    def gait_stop(self, ramp: float = 0.6, timed: bool = True,
+                  max_speed: float = 0.2, foot_tol: float = 0.012,
+                  max_wait: float = 4.0, lead: float = 0.0,
+                  brake: float = 0.0, brake_max: float = 0.3,
+                  still_arms: bool = False, catch_s: float = 2.0) -> dict:
+        """Ease the walking command to zero, then give the legs to the
+        stance policy.
+
+        Zero alone does not stop the walking policy (it creeps ~0.3 m/s),
+        and the stance policy was trained to hold a standing robot, not to
+        catch a walking one: handed over at a random moment it drops the
+        robot 9 times in 15 (eval/score_handover.py). Trials that survived
+        were moving ~0.20 m/s at handover, falls ~0.37 m/s, and handovers
+        with a foot in the air fell. So when `timed`, keep the walking
+        policy running at zero command and hand over only once the body is
+        slower than `max_speed` with both feet down, or after `max_wait`.
+        `lead` places the stance hold point that many seconds ahead along
+        the current velocity, where the robot would come to rest anyway.
+        `brake` > 0 replaces the zero command during the wait with one
+        opposing the measured velocity (gain `brake`, capped at
+        `brake_max` m/s), so the creep dies sooner instead of on its own.
+        `still_arms` sets the arm targets to where the arms are at handover.
+        Otherwise they keep the walking policy's last mid-swing target, one
+        arm forward and one back, and stand_still() stiffens them onto it.
+        With a catch policy configured (locomotion.catch_policy), it takes
+        the legs for `catch_s` first: trained only on this moment, from
+        recorded walking states with the arms held still. The stance policy
+        then takes over a robot that is standing quietly, which it handles.
+        """
+        v0 = self.loco.command.copy()
+        tick = self.loco.n_substeps * self.dt
+        n = max(1, int(round(ramp / tick)))
+        for k in range(1, n + 1):
+            self.loco.set_command(*(v0 * (1.0 - k / n)))
+            self.step(tick)
+        root_dof = self.model.jnt_dofadr[self.model.body_jntadr[self.root_id]]
+        feet = [self.model.body(f).id
+                for f in self.body.cfg.get("locomotion", {}).get("feet", [])]
+        waited, forced = 0.0, False
+        if timed:
+            floor_z = None
+            while True:
+                z = [self.data.xpos[f][2] for f in feet]
+                floor_z = min(z) if floor_z is None else min(floor_z, *z)
+                speed = float(np.linalg.norm(
+                    self.data.qvel[root_dof:root_dof + 2]))
+                planted = all(h < floor_z + foot_tol for h in z)
+                if speed < max_speed and planted:
+                    break
+                if waited >= max_wait:
+                    forced = True
+                    break
+                if brake > 0:
+                    v = self.data.qvel[root_dof:root_dof + 2]
+                    c, s_ = np.cos(self.base_yaw), np.sin(self.base_yaw)
+                    local = np.array([c * v[0] + s_ * v[1],
+                                      -s_ * v[0] + c * v[1]])
+                    cmd = np.clip(-brake * local, -brake_max, brake_max)
+                    self.loco.set_command(cmd[0], cmd[1], 0.0)
+                self.step(self.dt)
+                waited += self.dt
+        vel = self.data.qvel[root_dof:root_dof + 2].copy()
+        if still_arms or self.catch is not None:
+            for a in self.arm.values():
+                self.data.ctrl[a["act"]] = [
+                    self.data.qpos[self.model.jnt_qposadr[
+                        self.model.actuator_trnid[i, 0]]] for i in a["act"]]
+        if self.catch is not None and self.unified is None:
+            stance, self.stance = self.stance, self.catch
+            try:
+                self.stand_still()
+                self.step(max(0.0, catch_s - 0.5))
+            finally:
+                self.stance = stance
+            stance.hold(self.catch.hold_xy, self.catch.hold_yaw)
+            stance.last_action[:] = 0.0
+        elif self.stance is not None:
+            self.stand_still()
+            if lead and self.unified is None:
+                self.stance.hold(self.base_xy + lead * vel, self.base_yaw)
+        return {"waited": waited, "forced": forced,
+                "speed": float(np.linalg.norm(vel))}
+
     # ---------------- arm servoing ----------------
 
     def _orientation_twist(self, side: str) -> np.ndarray:
@@ -667,7 +922,7 @@ class Runtime:
                           posture=posture, posture_gain=1.2)
             self.data.qpos[a["qpos"]] = np.clip(
                 self.data.qpos[a["qpos"]] + qd * 0.01,
-                a["limits"][:, 0], a["limits"][:, 1])
+                a["ik_limits"][:, 0], a["ik_limits"][:, 1])
             mujoco.mj_forward(self.model, self.data)
         solution = self.data.qpos[a["qpos"]].copy()
         reached = float(np.linalg.norm(
@@ -773,7 +1028,8 @@ class Runtime:
         # arm quick enough to not hold a load out through a long move. Moving
         # a balancing body's arms like a person's is a retraining job, not a
         # tuning one, the same conclusion the gait reached.
-        profile = self._min_jerk if self.loco is None else self._smoothstep
+        profile = (self._min_jerk if self.loco is None
+                   or self.arm_profile == "min_jerk" else self._smoothstep)
         if self.loco is not None:
             # The free arm stays out of it too: a counterbalancing swing is a
             # second disturbance bought for a cosmetic gain.
@@ -798,6 +1054,26 @@ class Runtime:
                 # motion read as a person rather than a manipulator.
                 self.data.ctrl[self.arm[other]["act"]] = (
                     other_start + swing * np.sin(np.pi * s))
+            self.step(self.dt)
+
+    def _interp_ctrl_path(self, side: str, poses, duration: float) -> None:
+        """Pass through joint-space via poses as ONE motion: a Catmull-Rom
+        curve through them, on a single minimum-jerk clock, so the arm does
+        not come to rest at every via pose (three stop-start bell curves
+        read as a machine; one rounded swing reads as a person)."""
+        a = self.arm[side]
+        pts = np.array([self.data.ctrl[a["act"]].copy()]
+                       + [np.asarray(p, dtype=float) for p in poses])
+        curve = self._catmull_rom(pts)
+        arc = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(curve, axis=0),
+                                                  axis=1))]
+        n = max(1, int(duration / self.dt))
+        for i in range(n):
+            d = self._min_jerk((i + 1) / n) * arc[-1]
+            k = int(np.clip(np.searchsorted(arc, d) - 1, 0, len(curve) - 2))
+            seg = max(arc[k + 1] - arc[k], 1e-9)
+            u = (d - arc[k]) / seg
+            self.data.ctrl[a["act"]] = (1 - u) * curve[k] + u * curve[k + 1]
             self.step(self.dt)
 
     def reach_via(self, side: str, waypoints, duration: float | None = None,
@@ -1012,9 +1288,13 @@ class Runtime:
             return
         cfg = self.body.cfg["arms"][side]
         via = cfg.get("ready_via")
+        if via is not None and not isinstance(via[0], (list, tuple)):
+            via = [via]
+        if self.blend_vias:
+            path = list(reversed(via or [])) + [a["home_ctrl"]]
+            self._interp_ctrl_path(side, path, duration * 0.5 * len(path))
+            return
         if via is not None:
-            if not isinstance(via[0], (list, tuple)):
-                via = [via]
             for pose in reversed(via):
                 self._interp_ctrl(side, pose, duration * 0.5)
         self._interp_ctrl(side, a["home_ctrl"], duration * 0.5)
@@ -1033,9 +1313,13 @@ class Runtime:
             duration = 3.0 if self.loco is not None else 1.2
         cfg = self.body.cfg["arms"][side]
         via, ready = cfg.get("ready_via"), cfg.get("ready")
+        if via is not None and not isinstance(via[0], (list, tuple)):
+            via = [via]
+        if self.blend_vias and ready is not None:
+            path = list(via or []) + [ready]
+            self._interp_ctrl_path(side, path, duration * 0.6 * len(path))
+            return
         if via is not None:
-            if not isinstance(via[0], (list, tuple)):
-                via = [via]
             for pose in via:  # e.g. swing back, lift high, come in over the table
                 self._interp_ctrl(side, pose, duration * 0.6)
         if ready is not None:

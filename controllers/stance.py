@@ -32,6 +32,8 @@ class StancePolicy:
         self.net.eval()
         self.mean = np.asarray(ck["mean"])
         self.std = np.sqrt(np.asarray(ck["var"]) + 1e-8)
+        # the joint-target low-pass the policy was trained behind (1.0 = off)
+        self.act_filter = float(ck.get("act_filter", 1.0))
 
         self.model = model
         stance = dict(zip(LEGS + WAIST + ARMS, stand_angles))
@@ -53,6 +55,13 @@ class StancePolicy:
         self.hold_xy = None      # the mark it stands on
         self.hold_yaw = 0.0      # and the direction it faces there
         self._counter = 0
+        self._filt = None
+        self._prev = None
+        # Optional cap (rad) on how far the waist may bend from upright.
+        # The policy leans the torso 20 to 30 degrees into an arm load,
+        # which reads as slumping over the table.
+        self.waist_limit = None
+        self.waist_idx = np.array([CONTROLLED.index(n) for n in WAIST])
 
     def _sensor(self, data, sid):
         adr = self.model.sensor_adr[sid]
@@ -88,7 +97,12 @@ class StancePolicy:
         if self.hold_xy is None:
             self.hold(data.xpos[self.pelvis][:2])
         self._counter += 1
-        if self._counter % self.n_substeps:
+        k = self._counter % self.n_substeps
+        if k:
+            if self._filt is not None and self.act_filter < 1.0:
+                # ramp to the filtered target across the physics substeps
+                data.ctrl[self.act] = (self._prev + (self._filt - self._prev)
+                                       * (k + 1) / self.n_substeps)
             return
         obs = np.clip((self.observe(data) - self.mean) / self.std, -10, 10)
         with torch.no_grad():
@@ -96,4 +110,19 @@ class StancePolicy:
                 torch.as_tensor(obs, dtype=torch.float32))).numpy()
         action = np.clip(action, -1.0, 1.0)
         self.last_action = action.astype(np.float32)
-        data.ctrl[self.act] = self.default + ACTION_SCALE * action
+        target = self.default + ACTION_SCALE * action
+        if self.waist_limit is not None:
+            w = self.waist_idx
+            target[w] = np.clip(target[w], self.default[w] - self.waist_limit,
+                                self.default[w] + self.waist_limit)
+        if self.act_filter < 1.0:
+            if self._filt is None:
+                self._filt = data.qpos[self.qpos].copy()
+            self._prev = self._filt.copy()
+            self._filt = (self.act_filter * target
+                          + (1.0 - self.act_filter) * self._filt)
+            # same ramp as training: substep k of the window gets (k+1)/n
+            data.ctrl[self.act] = (self._prev + (self._filt - self._prev)
+                                   / self.n_substeps)
+            return
+        data.ctrl[self.act] = target

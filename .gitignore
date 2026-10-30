@@ -6,3 +6,7 @@ __pycache__/
 third_party/menagerie/
 docs/execution_plan.*
 training/logs/
+# per-iteration training checkpoints (only adopted policies are committed)
+third_party/policies/*/
+.venv-gpu/
+*.pdf

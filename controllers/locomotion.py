@@ -33,8 +33,12 @@ class LocomotionPolicy:
                  ctrl_dt: float = 0.02, action_scale: float = 0.5,
                  gait_freq: float = 1.5):
         self.model = model
-        self.session = ort.InferenceSession(
-            str(policy_path), providers=["CPUExecutionProvider"])
+        if str(policy_path).endswith(".pt"):   # fine-tuned copy
+            from controllers.walk_actor import TorchSession
+            self.session = TorchSession(policy_path)
+        else:
+            self.session = ort.InferenceSession(
+                str(policy_path), providers=["CPUExecutionProvider"])
         self.default = np.asarray(default_angles, dtype=np.float32)
         self.action_scale = action_scale
         self.ctrl_dt = ctrl_dt
@@ -56,7 +60,13 @@ class LocomotionPolicy:
         self.command = np.zeros(3, dtype=np.float32)   # vx, vy, yaw rate
         self.last_action = np.zeros(29, dtype=np.float32)
         self.phase = np.array([0.0, np.pi])
+        # a fine-tuned copy may have been trained at its own gait clock and
+        # behind a joint-target low-pass; both travel in the checkpoint
+        self.act_filter = getattr(self.session, "act_filter", 1.0)
+        gait_freq = getattr(self.session, "gait_freq", None) or gait_freq
         self.phase_dt = 2 * np.pi * gait_freq * ctrl_dt
+        self._filt = None
+        self._prev = None
         self.controlled = None      # None = all 29 joints
         self._counter = 0
 
@@ -81,14 +91,26 @@ class LocomotionPolicy:
     def step(self, data) -> None:
         """Call once per physics step; runs inference every `ctrl_dt`."""
         self._counter += 1
-        if self._counter % self.n_substeps:
+        k = self._counter % self.n_substeps
+        idx = self.leg_waist if self.controlled == "leg_waist" else slice(None)
+        if k:
+            if self._filt is not None:
+                data.ctrl[self.act_ids[idx]] = (
+                    self._prev + (self._filt - self._prev)
+                    * (k + 1) / self.n_substeps)[idx]
             return
         action = self.session.run(
             ["continuous_actions"],
             {"obs": self.observe(data).reshape(1, -1)})[0][0]
         self.last_action = action.copy()
         targets = action * self.action_scale + self.default
-        idx = self.leg_waist if self.controlled == "leg_waist" else slice(None)
+        if self.act_filter < 1.0:
+            if self._filt is None:
+                self._filt = data.qpos[self.qpos_adr].astype(np.float32)
+            self._prev = self._filt.copy()
+            self._filt = (self.act_filter * targets
+                          + (1.0 - self.act_filter) * self._filt)
+            targets = self._prev + (self._filt - self._prev) / self.n_substeps
         data.ctrl[self.act_ids[idx]] = targets[idx]
         self.phase = np.fmod(self.phase + self.phase_dt + np.pi,
                              2 * np.pi) - np.pi
