@@ -59,7 +59,9 @@ def response_schema(tool_names: list[str]) -> dict:
     return {
         "type": "object",
         "properties": {
-            "thought": {"type": "string"},
+            # bounded: a looping thought would otherwise run into the token limit and
+            # never close the JSON (seen with the fine-tuned 3B under greedy decoding)
+            "thought": {"type": "string", "maxLength": 200},
             "tool": {"type": "string", "enum": tool_names + ["done"]},
             "args": {
                 "type": "object",
@@ -72,7 +74,7 @@ def response_schema(tool_names: list[str]) -> dict:
                     ]},
                     "arm": {"type": "string",
                             "enum": ["left", "right", "both"]},
-                    "summary": {"type": "string"},
+                    "summary": {"type": "string", "maxLength": 200},
                 },
                 "additionalProperties": False,
             },

@@ -70,10 +70,11 @@ class AnswerLossTrainer(Trainer):
         return (loss, out) if return_outputs else loss
 
 
-def load_rows(data_dir: str):
+def load_rows(data_dirs: list[str]):
     rows = []
-    for f in sorted(glob.glob(os.path.join(os.path.expanduser(data_dir), "sft_*.jsonl"))):
-        rows += [json.loads(l) for l in open(f)]
+    for d in data_dirs:
+        for f in sorted(glob.glob(os.path.join(os.path.expanduser(d), "*.jsonl"))):
+            rows += [json.loads(l) for l in open(f)]
     for r in rows:   # the "last" context: system + newest state (holds image and history) + answer
         r["messages"] = [r["messages"][0], r["messages"][-2], r["messages"][-1]]
     return rows
@@ -81,7 +82,8 @@ def load_rows(data_dir: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True)
+    ap.add_argument("--data", required=True, nargs="+", help="folders of sft_*/dagger_* jsonl")
+    ap.add_argument("--init", default=None, help="continue from this LoRA adapter")
     ap.add_argument("--out", required=True)
     ap.add_argument("--epochs", type=float, default=2.0)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -111,7 +113,11 @@ def main() -> None:
                       task_type="CAUSAL_LM",
                       # language model only; the vision tower stays frozen
                       target_modules=r".*model\.language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)")
-    model = get_peft_model(model, lora)
+    if a.init:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, os.path.expanduser(a.init), is_trainable=True)
+    else:
+        model = get_peft_model(model, lora)
     model.print_trainable_parameters()
 
     args = TrainingArguments(

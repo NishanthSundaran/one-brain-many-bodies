@@ -117,6 +117,8 @@ class Agent:
             entry = {"step": step, "thought": call.get("thought", ""),
                      "tool": call["tool"], "args": call.get("args", {}),
                      "vlm_seconds": stats["seconds"]}
+            if call.get("thought") == "unparseable":
+                entry["raw"] = content[:2000]
             if call["tool"] == "done":
                 entry["result"] = {"ok": True, "summary":
                                    call.get("args", {}).get("summary", "")}
