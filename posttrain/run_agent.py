@@ -27,10 +27,10 @@ MAX_STEPS = 10
 EPISODE_LIMIT_S = 240
 
 
-def run_episode(task: dict, vlm) -> dict:
+def run_episode(task: dict, vlm, context: str = "last") -> dict:
     world, rt = build(task)
     rig = CameraRig(world.model, width=560, height=400)
-    agent = Agent(rt, world, rig, vlm=vlm)
+    agent = Agent(rt, world, rig, vlm=vlm, context=context)
     start = snapshot(world)
     signal.signal(signal.SIGALRM, _alarm)
     signal.alarm(EPISODE_LIMIT_S)
@@ -59,6 +59,7 @@ def main() -> None:
     p.add_argument("--model", default="qwen2.5vl:3b")
     p.add_argument("--host", default="http://localhost:11434", help="Ollama, or posttrain/serve_vlm.py")
     p.add_argument("--out", required=True)
+    p.add_argument("--context", default="last", choices=["last", "full"])
     a = p.parse_args()
     vlm = OllamaVLM(model=a.model, host=a.host)
     out = pathlib.Path(a.out)
@@ -66,7 +67,7 @@ def main() -> None:
     rows = []
     with open(out, "w") as f:
         for seed in range(*a.seeds):
-            r = run_episode(sample_task(seed), vlm)
+            r = run_episode(sample_task(seed), vlm, a.context)
             rows.append(r)
             f.write(json.dumps(r, default=str) + "\n")
             f.flush()

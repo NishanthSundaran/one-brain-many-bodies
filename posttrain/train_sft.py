@@ -50,16 +50,32 @@ class Collator:
         prompt = self.p.apply_chat_template(msgs[:-1], tokenize=False, add_generation_prompt=True)
         enc = self.p(text=[full], images=[image], return_tensors="pt")
         n_prompt = self.p(text=[prompt], images=[image], return_tensors="pt")["input_ids"].shape[1]
-        labels = enc["input_ids"].clone()
-        labels[:, :n_prompt] = -100           # learn the answer only
-        enc["labels"] = labels
+        # learn the answer only; keep its targets separately so the model computes logits for
+        # the answer positions alone (full-vocab logits over the whole prompt do not fit in 6 GB)
+        enc["answer_ids"] = enc["input_ids"][:, n_prompt:].clone()
         return enc
+
+
+class AnswerLossTrainer(Trainer):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.model_accepts_loss_kwargs = False   # our loss is a per-row mean: let Trainer divide by accum
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        ans = inputs.pop("answer_ids")
+        k = ans.shape[1]
+        out = model(**inputs, logits_to_keep=k + 1)
+        logits = out.logits[:, :-1].float()          # position t predicts token t+1
+        loss = torch.nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), ans.reshape(-1))
+        return (loss, out) if return_outputs else loss
 
 
 def load_rows(data_dir: str):
     rows = []
     for f in sorted(glob.glob(os.path.join(os.path.expanduser(data_dir), "sft_*.jsonl"))):
         rows += [json.loads(l) for l in open(f)]
+    for r in rows:   # the "last" context: system + newest state (holds image and history) + answer
+        r["messages"] = [r["messages"][0], r["messages"][-2], r["messages"][-1]]
     return rows
 
 
@@ -106,8 +122,8 @@ def main() -> None:
         save_strategy="steps", save_steps=100, save_total_limit=3,
         load_best_model_at_end=True, metric_for_best_model="eval_loss",
         gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
-        remove_unused_columns=False, dataloader_num_workers=2, report_to=[], seed=0)
-    trainer = Trainer(model=model, args=args, train_dataset=Rows(train), eval_dataset=Rows(val),
+        remove_unused_columns=False, label_names=["answer_ids"], prediction_loss_only=True, dataloader_num_workers=2, report_to=[], seed=0)
+    trainer = AnswerLossTrainer(model=model, args=args, train_dataset=Rows(train), eval_dataset=Rows(val),
                       data_collator=Collator(processor))
     trainer.train()
     final = pathlib.Path(a.out) / "final"

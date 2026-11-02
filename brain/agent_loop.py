@@ -31,8 +31,13 @@ DEFAULT_TOOLS = ("walk_to", "grasp", "place", "home")
 
 class Agent:
     def __init__(self, rt, world, rig, vlm: OllamaVLM | None = None,
-                 allowed_tools: tuple = DEFAULT_TOOLS):
+                 allowed_tools: tuple = DEFAULT_TOOLS, context: str = "full"):
         self.rt, self.world, self.rig = rt, world, rig
+        # "full": the whole chat so far; "last": system prompt + the newest state message only.
+        # The state message already carries the action history and the last result, so "last"
+        # loses nothing the planner needs and keeps the prompt near 1.3k tokens instead of 4.5k.
+        assert context in ("full", "last")
+        self.context = context
         self.vlm = vlm or OllamaVLM()
         # A small tool surface keeps a 3B planner on the rails (reach is
         # subsumed by grasp/place and only invites loops), and it must match
@@ -100,7 +105,8 @@ class Agent:
             messages.append({"role": "user", "content": "\n".join(parts),
                              "images": [png]})
 
-            content, stats = self.vlm.chat(messages, schema=self.schema)
+            sent = messages if self.context == "full" else [messages[0], messages[-1]]
+            content, stats = self.vlm.chat(sent, schema=self.schema)
             try:
                 call = json.loads(content)
             except json.JSONDecodeError:

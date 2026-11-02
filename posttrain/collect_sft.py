@@ -77,7 +77,7 @@ def main() -> None:
             world, rt = build(task)
             rig = CameraRig(world.model, width=560, height=400)
             vlm = ExpertVLM(task, world, rt)
-            agent = Agent(rt, world, rig, vlm=vlm)
+            agent = Agent(rt, world, rig, vlm=vlm, context="last")
             start = snapshot(world)
             signal.signal(signal.SIGALRM, _alarm)
             signal.alarm(EPISODE_LIMIT_S)
