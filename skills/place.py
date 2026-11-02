@@ -102,6 +102,13 @@ def run(rt, world, target, arm=None):
         aim = tpos.copy()
         grip = rt.ee_pos(arm) - world.object_pos(held_body)
         tpos = tpos + grip
+    elif rt.loco is None:
+        # Same idea for a fixed base, sideways only (the drop heights are tuned
+        # for the hand): a grasp taken off-centre, as after a handover at the
+        # midline, keeps its offset in the hold, and aiming the hand then
+        # set the object down ~5 cm from the target (measured on cups).
+        grip = rt.ee_pos(arm) - world.object_pos(rt.held(arm))
+        tpos = tpos + np.array([grip[0], grip[1], 0.0])
     # safe-height waypoint: travel above tabletop clutter, then descend
     patience = 16.0 if rt.loco is not None else 4.0
     balancing = rt.loco is not None
