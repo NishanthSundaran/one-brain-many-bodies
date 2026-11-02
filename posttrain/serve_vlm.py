@@ -19,7 +19,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import torch
 from lmformatenforcer import JsonSchemaParser
-from lmformatenforcer.integrations.transformers import build_transformers_prefix_allowed_tokens_fn
+from lmformatenforcer.integrations.transformers import (build_token_enforcer_tokenizer_data,
+                                                        build_transformers_prefix_allowed_tokens_fn)
 from PIL import Image
 from transformers import AutoProcessor, BitsAndBytesConfig, Qwen2_5_VLForConditionalGeneration
 
@@ -56,7 +57,9 @@ def to_qwen(messages):
 class Server:
     def __init__(self, processor, model, temperature: float, greedy: bool = False):
         self.p, self.m, self.temperature, self.greedy = processor, model, temperature, greedy
-        self._fns = {}
+        # Tokenizer tables are built once; the enforcer itself is rebuilt per request, because
+        # a reused one caches every prefix it has seen and grew the server to 17 GB of RAM.
+        self._tok_data = build_token_enforcer_tokenizer_data(processor.tokenizer)
 
     def chat(self, req: dict) -> dict:
         t0 = time.time()
@@ -65,11 +68,8 @@ class Server:
         enc = self.p(text=[text], images=images or None, return_tensors="pt").to(self.m.device)
         kw = {}
         if req.get("format"):
-            key = json.dumps(req["format"], sort_keys=True)
-            if key not in self._fns:
-                self._fns[key] = build_transformers_prefix_allowed_tokens_fn(
-                    self.p.tokenizer, JsonSchemaParser(req["format"]))
-            kw["prefix_allowed_tokens_fn"] = self._fns[key]
+            kw["prefix_allowed_tokens_fn"] = build_transformers_prefix_allowed_tokens_fn(
+                self._tok_data, JsonSchemaParser(req["format"]))
         temp = 0.0 if self.greedy else req.get("options", {}).get("temperature", self.temperature)
         with torch.no_grad():
             out = self.m.generate(**enc, max_new_tokens=256, do_sample=temp > 0,
