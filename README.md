@@ -15,6 +15,12 @@ fine-tuning on a privileged expert (QLoRA on a 6 GB GPU) takes it to 83, one DAg
 against 94 for the expert itself; success is always read from the physics state. A GRPO run with
 physics rewards on top changed no held-out outcome, and [`posttrain/`](posttrain/README.md) explains why.
 
+![stock vs fine-tuned planner on the same held-out task](demos/media/14_finetuned_planner.gif)
+
+*Held-out task 3, "Put the blue cup in the bin", 4x speed. Left: the stock model grasps with the right
+arm, then places with no arm given and keeps retrying (8 failed calls). Right: the fine-tuned planner sets
+the cup down at the middle, takes it with the left arm and drops it in the bin. `demos/14_finetuned_planner.py`.*
+
 | planner | held-out success | failed tool calls |
 |---|---|---|
 | Qwen2.5-VL-3B base | 23/100 | 418 |

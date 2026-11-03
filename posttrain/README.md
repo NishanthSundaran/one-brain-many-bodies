@@ -18,6 +18,11 @@ Paired on the same 100 tasks (exact McNemar): SFT beats base 61 to 1 (p = 3e-17)
 11 to 2 (p = 0.022); GRPO and DAgger solve exactly the same tasks (0 to 0). Regenerate with
 `python posttrain/summarize.py`; every episode, with its full tool-call transcript, is in `results/`.
 
+![stock vs fine-tuned planner on the same held-out task](../demos/media/14_finetuned_planner.gif)
+
+*Held-out task 3 at 4x speed: the stock model (left) never uses the handover and keeps retrying a failed
+grasp; the fine-tuned planner (right) hands the cup across and drops it in the bin.*
+
 ## The benchmark
 
 `tasks.py` samples a seeded scene (three objects from four blocks and two cups, plus a bin) and a command
@@ -106,6 +111,11 @@ experiment. On this benchmark, at this budget, the on-policy correction that wor
   Renderers are now closed every episode and the agent raises on an empty first frame.
 * **Server memory.** The JSON-schema enforcer cached every prefix it had seen and grew the server to
   17 GB of RAM. It is now built per request from cached tokenizer tables; RSS stays near 2.2 GB.
+* **Greedy is not bit-exact on the GPU.** Re-running the same task can flip a near-tied token for the
+  base model (task 3 took a different second call in two runs, failing both times), so its per-task
+  transcripts are not exactly reproducible. The fine-tuned planners are confident enough that this did
+  not show: the GRPO adapter reproduced the DAgger run's failure list exactly. Expect a task or two of
+  run-to-run spread for the base model.
 * **Answer-only logits.** Full-vocabulary logits over the whole prompt cost 0.9 GB on their own. The
   trainer asks for logits on the answer positions only (`logits_to_keep`).
 
