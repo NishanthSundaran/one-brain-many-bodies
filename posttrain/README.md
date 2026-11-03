@@ -23,6 +23,9 @@ Paired on the same 100 tasks (exact McNemar): SFT beats base 61 to 1 (p = 3e-17)
 *Held-out task 3 at 4x speed: the stock model (left) never uses the handover and keeps retrying a failed
 grasp; the fine-tuned planner (right) hands the cup across and drops it in the bin.*
 
+A longer study guide (concepts, every step, interview questions) is in
+[`docs/Planner_PostTraining_Study_Guide.pdf`](../docs/Planner_PostTraining_Study_Guide.pdf).
+
 ## The benchmark
 
 `tasks.py` samples a seeded scene (three objects from four blocks and two cups, plus a bin) and a command
