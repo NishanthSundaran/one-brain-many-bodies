@@ -8,6 +8,21 @@ Companion repo: [g1-motion-imitation](https://github.com/NishanthSundaran/g1-mot
 DeepMimic-style motion imitation for the G1 on LAFAN1 mocap. The gait work
 there is what diagnosed the walking limitation documented below.
 
+## Fine-tuning the brain: 23% to 92%
+
+The stock Qwen2.5-VL-3B planner solves 23 of 100 held-out table-top tasks on the G1. Supervised
+fine-tuning on a privileged expert (QLoRA on a 6 GB GPU) takes it to 83, one DAgger round to 92,
+against 94 for the expert itself; success is always read from the physics state. A GRPO run with
+physics rewards on top changed no held-out outcome, and [`posttrain/`](posttrain/README.md) explains why.
+
+| planner | held-out success | failed tool calls |
+|---|---|---|
+| Qwen2.5-VL-3B base | 23/100 | 418 |
+| + SFT | 83/100 | 46 |
+| + DAgger | **92/100** | 28 |
+| + GRPO | 92/100 | 27 |
+| privileged expert | 94/100 | |
+
 ## Architecture
 
 ```
@@ -38,6 +53,7 @@ there is what diagnosed the walking limitation documented below.
 | 6c | **Reaching: solved vs learned, side by side** | ✅ `demos/09_reach_ik_vs_rl.py` |
 | 6d | **Human-motion metrics + IK vs RL for grasping** | ✅ `eval/` |
 | 6e | **Walk 2.8 m to a bench, pick and place, 17/20** | ✅ `demos/13_walk_across_and_fetch.py` |
+| 6f | **Planner post-training: SFT + DAgger + GRPO, 23 to 92/100** | ✅ `posttrain/` |
 | 7 | ISO/TS 15066-style safety layer + evaluation | ⬜ |
 
 ## Setup
