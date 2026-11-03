@@ -133,6 +133,7 @@ def main() -> None:
     ap.add_argument("--lr", type=float, default=5e-6)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--seed0", type=int, default=20000)
+    ap.add_argument("--families", nargs="*", default=None, help="train only on these task families")
     a = ap.parse_args()
     out = pathlib.Path(a.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
@@ -157,6 +158,8 @@ def main() -> None:
     while trained < a.groups:
         task = sample_task(seed)
         seed += 1
+        if a.families and task["family"] not in a.families:
+            continue
         tried += 1
         t0 = time.time()
         model.eval()
