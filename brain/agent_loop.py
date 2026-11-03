@@ -88,6 +88,10 @@ class Agent:
         history: list[str] = []
         for step in range(max_steps):
             png, markers = self._perceive()
+            if step == 0 and not markers:
+                # every scene has objects in view; an empty list means the renderer is broken
+                # (e.g. a previous episode's mujoco.Renderer still alive in this process)
+                raise RuntimeError("perception returned no markers on the first frame")
             marker_txt = json.dumps(
                 {mid: {"name": m["name"], "position": m["pos"],
                        "arm": self.rt.nearest_arm(m["pos"]),

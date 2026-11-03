@@ -87,6 +87,7 @@ def main() -> None:
                 ok = False
             finally:
                 signal.alarm(0)
+                rig.close()   # a live renderer from an old episode breaks segmentation in the next
             stats[f"{task['family']}_{'ok' if ok else 'fail'}"] += 1
             stats["steps"] += len(vlm.steps)
             stats["disagree"] += vlm.disagree
@@ -94,7 +95,10 @@ def main() -> None:
                 f.write(json.dumps({"seed": seed, "family": task["family"], "policy_ok": ok, **r}) + "\n")
             f.flush()
             print(f"seed {seed} {task['family']:8s} policy {'ok  ' if ok else 'FAIL'} "
-                  f"{len(vlm.steps)} labelled, {vlm.disagree} disagreements", flush=True)
+                  f"{len(vlm.steps)} labelled, {vlm.disagree} disagreements :: "
+                  + " ".join(f"{e['tool']}({json.dumps(e['args'], separators=(',', ':'))})"
+                             f"{'' if (e.get('result') or {}).get('ok') else '!'}" for e in agent.transcript),
+                  flush=True)
     print(dict(stats))
 
 

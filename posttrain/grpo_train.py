@@ -104,6 +104,7 @@ def play(task, vlm) -> dict:
         transcript, ok = agent.transcript, False
     finally:
         signal.alarm(0)
+        rig.close()   # a live renderer from an old episode breaks segmentation in the next
     failed = sum(1 for e in transcript if e["tool"] != "done" and not (e.get("result") or {}).get("ok", False))
     reward = float(ok) - FAIL_COST * failed - STEP_COST * len(transcript)
     return {"success": ok, "failed": failed, "n": len(transcript), "reward": reward,

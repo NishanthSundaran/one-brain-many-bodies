@@ -88,6 +88,7 @@ def main() -> None:
                 ok = False
             finally:
                 signal.alarm(0)
+                rig.close()   # a live renderer from an old episode breaks segmentation in the next
             stats[(task["family"], ok)] += 1
             if not ok:
                 print(f"skip seed {seed} {task['family']}: expert failed in physics", flush=True)

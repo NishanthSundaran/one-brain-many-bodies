@@ -42,6 +42,7 @@ def run_episode(task: dict, vlm, context: str = "last") -> dict:
         transcript, why = agent.transcript, f"timeout after {EPISODE_LIMIT_S}s"
     finally:
         signal.alarm(0)
+        rig.close()   # a live renderer from an old episode breaks segmentation in the next
     verdict = check(task, world, start, rt) if why is None else {"success": False, "why": why}
     called_done = bool(transcript) and transcript[-1]["tool"] == "done"
     failed_calls = sum(1 for e in transcript if e["tool"] != "done"
